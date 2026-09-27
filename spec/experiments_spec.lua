@@ -132,6 +132,10 @@ describe("experiments with a fake lgml", function()
 			assert.matches("wrote=cryptography", w.meta["gen.topics"])
 			assert.is_not_nil(w.meta["gen.form"])
 			assert.is_not_nil(w.meta["gen.abstract"])
+			-- one version for the note, one for the whole update run
+			assert.equal(2, w.rev)
+			assert.equal("cairn:update", d:row("SELECT author FROM "
+			    .. "doc_version WHERE doc = ? AND rev = 2", { id }))
 		end
 		assert.equal(2, d:row("SELECT count(*) FROM docvec"))
 

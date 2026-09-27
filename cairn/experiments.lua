@@ -702,15 +702,45 @@ end
 -- stamp(d, name, id, model, vocab, wrote, change) writes a new version
 -- of id as author cairn:NAME: change(w) edits it, and the receipt
 -- records what the classifier wrote
+-- while update runs, stamps queue here, one list of changes a document,
+-- and update writes each document once at the end
+local batch
+
 local function stamp(d, name, id, model, vocab, wrote, change)
-	require("cairn.store").update(d, id, nil, "cairn:" .. name, function(w)
+	local function edit(w)
 		if change then
 			change(w)
 		end
 		w.meta[receipt.key(name)] = receipt.format({ v = M.VERSION[name],
 		    model = model, content = receipt.content(d, w.content),
 		    vocab = vocab, wrote = wrote })
-	end)
+	end
+
+	if batch then
+		if not batch.edits[id] then
+			batch.edits[id] = {}
+			batch.order[#batch.order + 1] = id
+		end
+		table.insert(batch.edits[id], edit)
+		return
+	end
+	require("cairn.store").update(d, id, nil, "cairn:" .. name, edit)
+end
+
+-- flush(d) writes each queued document as one version by cairn:update
+local function flush(d)
+	local store = require "cairn.store"
+	local b = batch
+
+	batch = nil
+	for _, id in ipairs(b and b.order or {}) do
+		store.update(d, id, nil, "cairn:update", function(w)
+			for _, edit in ipairs(b.edits[id]) do
+				edit(w)
+			end
+		end)
+	end
+	return b and #b.order or 0
 end
 
 -- adopt(d, name, model, vocab, now, ok) writes a receipt for each
@@ -1439,6 +1469,11 @@ M.list.update = {
 	desc = "run form, topics, and summarize on new and changed documents, "
 	    .. "then similar; a dry run prints what they would write",
 	run = function(p, d, path)
+		-- collect every classifier's changes, then write each document
+		-- once, so a run adds one version a document, not one a classifier
+		if p.opts.apply then
+			batch = { edits = {}, order = {} }
+		end
 		for _, name in ipairs(M.UPDATE) do
 			print("== " .. name)
 
@@ -1450,6 +1485,9 @@ M.list.update = {
 			if not ok then
 				print(("%s: %s"):format(name, tostring(err)))
 			end
+		end
+		if p.opts.apply then
+			print(("%d documents written"):format(flush(d)))
 		end
 		print("== similar")
 		if p.opts.apply then
