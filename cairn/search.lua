@@ -326,8 +326,12 @@ local RTAG = "(SELECT t.doc, coalesce(a.name, t.name) AS name FROM tag t "
     .. "JOIN doc d ON d.id = t.doc "
     .. "WHERE d.hidden = 0 AND d.superseded_by IS NULL)"
 
--- tags(d, prefix) -> list of { name, count, with = {...}, about } for
--- the tags that start with prefix. A nested name also lists its
+-- the key on a tag's about page that holds its scope note: one line on
+-- what the tag covers and what it leaves out (SKOS skos:scopeNote)
+M.SCOPE = "skos.scopeNote"
+
+-- tags(d, prefix) -> list of { name, count, with = {...}, about, scope }
+-- for the tags that start with prefix. A nested name also lists its
 -- parents, with the count of documents under each.
 function M.tags(d, prefix)
 	local rows = d:rows("SELECT name, count(DISTINCT doc) AS count FROM "
@@ -337,6 +341,15 @@ function M.tags(d, prefix)
 
 	for _, r in ipairs(rows) do
 		byname[r.name] = r
+	end
+	-- a tag with an about page exists before any document uses it
+	for _, a in ipairs(d:rows("SELECT DISTINCT about FROM doc WHERE about "
+	    .. "IS NOT NULL AND hidden = 0 AND superseded_by IS NULL AND (? IS "
+	    .. "NULL OR about LIKE ? || '%')", { prefix, prefix, n = 2 })) do
+		if not byname[a.about] then
+			byname[a.about] = { name = a.about, count = 0 }
+			rows[#rows + 1] = byname[a.about]
+		end
 	end
 	for _, r in ipairs(rows) do
 		local parent = r.name:match("^(.+)/[^/]+$")
@@ -363,8 +376,25 @@ function M.tags(d, prefix)
 		end
 		r.about = d:row("SELECT id FROM doc WHERE about = ? AND hidden = 0 "
 		    .. "AND superseded_by IS NULL", { r.name })
+		r.scope = r.about and d:row("SELECT value FROM meta WHERE doc = ? "
+		    .. "AND key = ? ORDER BY seq LIMIT 1", { r.about, M.SCOPE })
 	end
 	return rows
+end
+
+-- lowest score of a similar document shown by default
+M.SIMILAR = 0.5
+
+-- similar(d, id, min) -> up to 5 of { id, score, title }: the stored
+-- nearest documents (cairn experiments similar) that score min or more.
+-- Documents linked either way are left out; links already show them.
+function M.similar(d, id, min)
+	return d:rows("SELECT s.other AS id, s.score, d.title FROM similar s "
+	    .. "JOIN doc d ON d.id = s.other WHERE s.doc = ? AND d.hidden = 0 "
+	    .. "AND s.score >= ? AND NOT EXISTS (SELECT 1 FROM link l WHERE "
+	    .. "(l.src = s.doc AND l.dst = s.other) OR (l.src = s.other AND "
+	    .. "l.dst = s.doc)) ORDER BY s.score DESC LIMIT 5",
+	    { id, min or M.SIMILAR })
 end
 
 -- related(d, id, depth, rel) -> linked documents in both directions

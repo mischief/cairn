@@ -221,3 +221,64 @@ describe("search input", function()
 		d:close()
 	end)
 end)
+
+describe("attach duplicates", function()
+	it("returns the document that already holds the same bytes", function()
+		local d = assert(db.open(":memory:"))
+		local a = store.attach(d, { data = "%PDF same", name = "a.pdf",
+		    author = "k" })
+		local b, _, _, kinds, existing = store.attach(d, { data = "%PDF same",
+		    name = "a (1).pdf", author = "k" })
+
+		assert.equal(a, b)
+		assert.is_true(existing)
+		assert.same({}, kinds)
+		assert.equal(1, d:row("SELECT count(*) FROM doc"))
+
+		local c = store.attach(d, { data = "%PDF same", name = "b.pdf",
+		    author = "k", force = true })
+
+		assert.are_not.equal(a, c)
+		d:close()
+	end)
+end)
+
+describe("hidden search", function()
+	it("finds hidden documents only when asked", function()
+		local d = assert(db.open(":memory:"))
+		local id = store.note(d, { title = "old datasheet", body = "wifi module",
+		    author = "k" })
+
+		store.note(d, { title = "kept", body = "wifi notes", author = "k" })
+		store.update(d, id, nil, "k", function(w)
+			w.hidden = true
+		end)
+		assert.equal(1, #search.search(d, "wifi"))
+		assert.equal(id, search.search(d, "wifi", { hidden = true })[1].id)
+		assert.equal(1, #search.search(d, "*", { hidden = true }))
+		d:close()
+	end)
+end)
+
+describe("similar in view", function()
+	it("skips linked documents and scores below the minimum", function()
+		local cli = require "cairn.cli"
+		local d = assert(db.open(":memory:"))
+		local a = store.note(d, { title = "a", body = "x", author = "k" })
+		local b = store.note(d, { title = "b", body = "see [[a]]", author = "k" })
+		local c = store.note(d, { title = "c", body = "y", author = "k" })
+		local e = store.note(d, { title = "e", body = "z", author = "k" })
+
+		for _, r in ipairs({ { b, 0.9 }, { c, 0.7 }, { e, 0.3 } }) do
+			d:run("INSERT INTO similar (doc, other, score, model) "
+			    .. "VALUES (?, ?, ?, 'm')", { a, r[1], r[2] })
+		end
+
+		local v = cli.view(d, a)
+
+		assert.equal(1, #v.similar)
+		assert.equal(c, v.similar[1].id)
+		assert.equal(2, #cli.view(d, a, nil, nil, nil, nil, 0).similar)
+		d:close()
+	end)
+end)

@@ -22,8 +22,9 @@ FIND:
   cairn search 'WORDS tag:TAG mime:pdf author:NICK since:2026-09-01'
   cairn get ID [--page N]     full text, 16000 characters a page
   cairn get 'cairn:ID#p=12'   one PDF page; search prints these URIs
+  cairn get 'cairn:ID#p=12-15' pages 12 to 15
   cairn tags [PREFIX]         the topics, with counts
-  cairn related ID            documents linked to ID
+  cairn related ID            documents linked to ID, then similar ones
   cairn recent                newest versions
   cairn wanted                titles notes link to that no document has
   Metadata filters: date:<1990 date:1985 creator:intel
@@ -44,12 +45,17 @@ WRITE A NOTE:
   Tags:  CAIRN_AUTHOR=NICK cairn tag ID +new -old
   Links: CAIRN_AUTHOR=NICK cairn link SRC DST REL
          REL is see-also, cites, supersedes, or contradicts.
+  About: a tag can have one about page that says what it covers:
+         CAIRN_AUTHOR=NICK cairn put 'TITLE' --about TAG \
+             --set skos.scopeNote='one line: what the tag holds' < body.md
+         cairn tags shows the scope note beside the tag.
 
 LINKS:
   In a note body, [[TARGET]] links to another document. TARGET is a
   title, an ID, or a CID, and it may end in:
     @REV     a fixed version:          [[Intel MP spec@2]]
     #p=N     one page of a PDF:        [[Intel MP spec#p=29]]
+    #p=N-M   pages N to M:             [[Intel MP spec#p=29-31]]
     #TEXT    sections whose heading holds TEXT
   A link records the version of its target when you make it. When the
   target changes later, cairn get marks the link "changed since linked":
@@ -103,19 +109,19 @@ M.USAGE = [==[
 usage: cairn [-d db] [--json] command [args]
 
   init                              make an empty database
-  put <title> [-t tag]... [--set k=v]... [file|-]
+  put <title> [-t tag]... [--set k=v]... [--about tag] [file|-]
                                     write a markdown note
   edit <id> <rev> [file|-]          new version of a note
-  attach <file> [-t tag]... [--title t] [--set k=v]...
+  attach <file> [-t tag]... [--title t] [--set k=v]... [--force]
                                     store a file, queue extraction
   check                             which extractors are installed, and
                                     the state of the database and queue
   enrich [--max n] [--retry-failed]
                                     drain the extraction queue
   search <query> [--all] [--limit n] [--chunks n]
-                                    search; tag: mime: author: since:
-                                    shows n passages per document (3)
-  get <id|cid|uri> [--rev n] [--page n] [--at p=N|text] [--meta]
+                                    search; alone, prints its own help
+  get <id|cid|uri> [--rev n] [--page n] [--at p=N|p=N-M|text]
+      [--meta] [--similar min]
                                     show a document
   cat <id|cid> [out]                write the file bytes
   tag <id> [+tag|-tag]...           change tags
@@ -125,7 +131,8 @@ usage: cairn [-d db] [--json] command [args]
   wanted                            titles linked but not written
   meta <id> [key=v|key=|key+=v]... [--from-file]
                                     show or change metadata
-  related <id> [--depth n]          linked documents
+  related <id> [--depth n] [--similar min]
+                                    linked documents, then similar ones
   hide <id>, unhide <id>            hide or show a document
   recent [--since t] [--author a]   recent versions
   alias <alias> <tag>               add a tag alias
@@ -368,7 +375,8 @@ end
 -- view(d, id, rev, page, frag, size) -> table describing one document.
 -- frag limits the text to one page ("p=12") or to headings holding
 -- frag. size is the characters of text per page, 16000 by default.
-function M.view(d, id, rev, page, frag, size)
+-- similar is the lowest score of the similar documents listed.
+function M.view(d, id, rev, page, frag, size, similar)
 	local cur = store.doc(d, id)
 
 	if not cur then
@@ -405,6 +413,7 @@ function M.view(d, id, rev, page, frag, size)
 		v.links[#v.links + 1] = linkinfo(d, l)
 	end
 	v.meta = store.nodemeta(node)
+	v.similar = search.similar(d, id, similar)
 	for _, l in ipairs(d:rows("SELECT src, rel FROM link WHERE dst = ?",
 	    { id })) do
 		v.backlinks[#v.backlinks + 1] = { rel = l.rel, doc = l.src,
@@ -520,6 +529,9 @@ local function showdoc(v, allmeta)
 			    x.frag and ("  #" .. x.frag) or "", note)
 		end
 	end
+	for _, x in ipairs(v.similar or {}) do
+		l[#l + 1] = ("~ similar %.2f %s  %s\n"):format(x.score, x.id, x.title)
+	end
 	if v.pending then
 		l[#l + 1] = "text: pending\n"
 	end
@@ -559,8 +571,9 @@ function R.tags(rows)
 	for _, r in ipairs(rows) do
 		local depth = select(2, r.name:gsub("/", ""))
 
-		s[#s + 1] = ("%s%s  %d%s%s\n"):format(("  "):rep(depth), r.name,
-		    r.count, #r.with > 0 and ("  with " .. join(r.with)) or "",
+		s[#s + 1] = ("%s%s  %d%s%s%s\n"):format(("  "):rep(depth), r.name,
+		    r.count, r.scope and ("  " .. r.scope) or "",
+		    #r.with > 0 and ("  with " .. join(r.with)) or "",
 		    r.about and ("  about " .. r.about) or "")
 	end
 	return #s > 0 and table.concat(s) or "no tags\n"
@@ -596,14 +609,18 @@ function R.wanted(list)
 	return #s > 0 and table.concat(s) or "nothing wanted\n"
 end
 
-function R.related(rows)
+-- related(rows, similar) -> linked documents, then similar ones
+function R.related(rows, similar)
 	local s = {}
 
 	for _, r in ipairs(rows) do
 		s[#s + 1] = ("%s%s %s %s  %s\n"):format(("  "):rep(r.depth - 1),
 		    r.dir == "out" and "->" or "<-", r.rel, r.id, r.title)
 	end
-	return #s > 0 and table.concat(s) or "no linked documents\n"
+	for _, x in ipairs(similar or {}) do
+		s[#s + 1] = ("~ similar %.2f %s  %s\n"):format(x.score, x.id, x.title)
+	end
+	return #s > 0 and table.concat(s) or "no linked or similar documents\n"
 end
 
 function R.recent(rows)
@@ -679,6 +696,7 @@ function C.put(p, d)
 	local body = readinput(p.args[2])
 	local id, rev, c, dups, close, wanted, fills = store.note(d, {
 	    title = title, body = body, tags = p.opts.t, author = M.author(),
+	    about = p.opts.about,
 	    meta = #p.opts.set > 0 and require("cairn.meta").apply({}, p.opts.set)
 	    or nil })
 
@@ -825,7 +843,8 @@ function C.get(p, d)
 	local id, rev, frag = M.target(d, p.args[1] or error("get needs an id", 0))
 
 	out(p.opts, M.view(d, id, math.tointeger(tonumber(p.opts.rev)) or rev,
-	    math.tointeger(tonumber(p.opts.page)), p.opts.at or frag),
+	    math.tointeger(tonumber(p.opts.page)), p.opts.at or frag, nil,
+	    tonumber(p.opts.similar)),
 	    function(v)
 		return R.doc(v, p.opts.meta)
 	end)
@@ -949,8 +968,13 @@ end
 function C.related(p, d)
 	local id = M.docid(d, p.args[1] or error("related needs an id", 0))
 
+	local near = search.similar(d, id, tonumber(p.opts.similar))
+
 	out(p.opts, search.related(d, id,
-	    math.tointeger(tonumber(p.opts.depth)) or 1, p.opts.rel), R.related)
+	    math.tointeger(tonumber(p.opts.depth)) or 1, p.opts.rel),
+	    function(rows)
+		return R.related(rows, near)
+	end)
 end
 
 

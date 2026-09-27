@@ -150,10 +150,14 @@ function M.tools(d, path, author)
 			    desc = "characters of text per page" },
 			meta = mcptk.bool{ default = false,
 			    desc = "also show the raw pdf.* and jev.* keys" },
+			similar = mcptk.num{ default = search.SIMILAR, min = 0, max = 1,
+			    desc = "lowest score of the similar documents listed; "
+			    .. "lower shows more" },
 		},
 		run = function(a)
 			local id, rev, frag = cli.target(d, a.id)
-			local v = cli.view(d, id, a.rev or rev, a.page, frag, a.chars)
+			local v = cli.view(d, id, a.rev or rev, a.page, frag, a.chars,
+			    a.similar)
 
 			return data(R.doc(v, a.meta))
 		end,
@@ -350,14 +354,19 @@ function M.tools(d, path, author)
 
 	T[#T + 1] = {
 		name = "related",
-		description = "Documents linked to a document, both directions.",
+		description = "Documents linked to a document, both directions, "
+		    .. "then similar documents that are not linked.",
 		args = {
 			id = mcptk.str,
 			depth = mcptk.int{ default = 1, min = 1, max = 4 },
 			rel = mcptk.str{ optional = true },
+			similar = mcptk.num{ default = search.SIMILAR, min = 0, max = 1,
+			    desc = "lowest score of the similar documents listed; "
+			    .. "lower shows more" },
 		},
 		run = function(a)
-			return text(R.related(search.related(d, a.id, a.depth, a.rel)))
+			return text(R.related(search.related(d, a.id, a.depth, a.rel),
+			    search.similar(d, a.id, a.similar)))
 		end,
 	}
 
