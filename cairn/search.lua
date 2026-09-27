@@ -4,6 +4,7 @@
 
 local store = require "cairn.store"
 local tags = require "cairn.tags"
+local topics = require "cairn.topics"
 
 local M = {}
 
@@ -96,17 +97,26 @@ local function filters(d, f, opts)
 	-- hidden documents show only when asked for, and then only they do
 	local sql, args = { opts.hidden and "d.hidden = 1" or "d.hidden = 0" }, {}
 
+	-- about pages define tags; cairn tags shows their scope notes, so
+	-- they show only when asked for, and then only they do
+	sql[#sql + 1] = opts.about and "d.about IS NOT NULL" or "d.about IS NULL"
+
 	if not opts.superseded then
 		sql[#sql + 1] = "d.superseded_by IS NULL"
 	end
 	for _, t in ipairs(f.tag) do
 		local name = store.resolve_tag(d, t)
+		-- a topic also matches the topics under it
+		local under = topics.descendants(d, name)
+		local marks = ("?, "):rep(#under):sub(1, -3)
 
 		sql[#sql + 1] = "EXISTS (SELECT 1 FROM tag t LEFT JOIN tag_alias a "
 		    .. "ON a.alias = t.name WHERE t.doc = d.id "
-		    .. "AND (coalesce(a.name, t.name) = ? "
+		    .. "AND (coalesce(a.name, t.name) IN (" .. marks .. ") "
 		    .. "OR coalesce(a.name, t.name) LIKE ? ESCAPE '\\'))"
-		args[#args + 1] = name
+		for _, u in ipairs(under) do
+			args[#args + 1] = u
+		end
 		args[#args + 1] = name:gsub("[%%_\\]", "\\%0") .. "/%"
 	end
 	if f.mime then
@@ -328,11 +338,12 @@ local RTAG = "(SELECT t.doc, coalesce(a.name, t.name) AS name FROM tag t "
 
 -- the key on a tag's about page that holds its scope note: one line on
 -- what the tag covers and what it leaves out (SKOS skos:scopeNote)
-M.SCOPE = "skos.scopeNote"
+M.SCOPE = topics.SCOPE
 
 -- tags(d, prefix) -> list of { name, count, with = {...}, about, scope }
 -- for the tags that start with prefix. A nested name also lists its
--- parents, with the count of documents under each.
+-- parents, with the count of documents under each. A topic counts the
+-- documents of the topics under it too.
 function M.tags(d, prefix)
 	local rows = d:rows("SELECT name, count(DISTINCT doc) AS count FROM "
 	    .. RTAG .. " WHERE (? IS NULL OR name LIKE ? || '%') "
@@ -378,6 +389,17 @@ function M.tags(d, prefix)
 		    .. "AND superseded_by IS NULL", { r.name })
 		r.scope = r.about and d:row("SELECT value FROM meta WHERE doc = ? "
 		    .. "AND key = ? ORDER BY seq LIMIT 1", { r.about, M.SCOPE })
+
+		local under = r.about and topics.descendants(d, r.name) or {}
+
+		if #under > 1 then
+			local marks = ("?, "):rep(#under):sub(1, -3)
+
+			under[#under + 1] = r.name:gsub("[%%_\\]", "\\%0") .. "/%"
+			r.count = d:row("SELECT count(DISTINCT doc) FROM " .. RTAG
+			    .. " WHERE name IN (" .. marks .. ") OR name LIKE ? "
+			    .. "ESCAPE '\\'", under)
+		end
 	end
 	return rows
 end

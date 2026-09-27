@@ -30,6 +30,9 @@ something, and put what you learn so other agents find it.
   link or supersede instead of writing duplicates. Reuse the close
   tags it suggests instead of new spellings.
 - tags are the topics. A "/" nests them: tag:hw matches hw/stm32.
+  topic/NAME tags are general topics from a fixed list (tags topic/
+  shows each with its scope note); tag:topic/security also finds the
+  narrower topics under it, such as topic/cryptography.
 - edit and tag need the current rev; a stale rev fails with the
   current one.
 - attach stores a local file; its text becomes searchable after
@@ -41,6 +44,9 @@ cairn is a shared knowledge store, open here for reading only. Search
 it before you research something.
 - search returns snippets; get returns full text, one page at a time.
 - tags are the topics. A "/" nests them: tag:hw matches hw/stm32.
+  topic/NAME tags are general topics from a fixed list (tags topic/
+  shows each with its scope note); tag:topic/security also finds the
+  narrower topics under it, such as topic/cryptography.
 - related follows links between documents; recent shows new versions.
 - links and search hits carry cairn:ID[@REV][#p=N] URIs; get takes
   them. A link marked changed means its target moved on since.

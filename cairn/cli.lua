@@ -49,6 +49,12 @@ WRITE A NOTE:
          CAIRN_AUTHOR=NICK cairn put 'TITLE' --about TAG \
              --set skos.scopeNote='one line: what the tag holds' < body.md
          cairn tags shows the scope note beside the tag.
+  Topics: topic/NAME tags are general topics from a fixed list; cairn
+         tags topic/ shows them with their scope notes. Tag a note
+         with the most specific topics that fit, 1 to 4. A search for
+         tag:topic/security also finds topic/cryptography and the
+         other topics under it. Do not make new topic/ tags; a new
+         topic needs an about page with a scope note and skos.broader.
 
 LINKS:
   In a note body, [[TARGET]] links to another document. TARGET is a
@@ -126,6 +132,8 @@ usage: cairn [-d db] [--json] command [args]
   cat <id|cid> [out]                write the file bytes
   tag <id> [+tag|-tag]...           change tags
   tags [prefix]                     list tags
+  topics seed                       write the starter list of topic/
+                                    tags as about pages
   link <src> <dst> <rel> [--remove] add or remove a link; dst takes
                                     @rev and #p=N
   wanted                            titles linked but not written
@@ -668,6 +676,7 @@ function C.init(p)
 
 	d:close()
 	print("database " .. path)
+	print("cairn topics seed writes a starter list of topic/ tags")
 end
 
 -- noteout(v) prints the result of put or edit
@@ -900,6 +909,20 @@ function C.tag(p, d)
 	end)
 
 	newrev(p, nid, rev)
+end
+
+function C.topics(p, d)
+	if p.args[1] ~= "seed" then
+		error("usage: cairn topics seed", 0)
+	end
+
+	local added, differ, aliases = require("cairn.topics").seed(d,
+	    "cairn")
+
+	print(("%d topics added, %d aliases added"):format(added, aliases))
+	for _, t in ipairs(differ) do
+		print("scope note differs from the starter list: " .. t)
+	end
 end
 
 function C.tags(p, d)
