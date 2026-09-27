@@ -339,10 +339,30 @@ run when asked. Most do a dry run by default and write with `--apply`.
 | `similar` | embeds each document and stores its nearest documents |
 | `expand` | writes search terms for each chunk |
 
-Values an experiment writes carry the model name (`gen.type`,
-`jev.model`), so a later run can tell them from values a person set.
+`form` and `topics` leave a receipt on each document they change: a
+`gen.form` or `gen.topics` key with the classifier version, the model,
+the content it read, a hash of the vocabulary, and what it wrote. They
+write as author `cairn:form` or `cairn:topics`. The receipt tells a
+later run what to do:
+
+| state | means | runs |
+|---|---|---|
+| new | never classified | by default |
+| changed | the text changed since | by default |
+| old, model, vocab | the classifier, model, or vocabulary changed since | with `--stale` |
+| hand | a person changed what the classifier wrote | only when named |
+| current | nothing changed | with `--all` |
+
+    cairn experiments status                  # counts by state
+    cairn experiments topics --apply          # new and changed only
+    cairn experiments topics --stale --tag topic/security --apply
+
+`--tag` limits a run to one topic and the topics under it, for example
+after editing that topic's scope note. A full run takes about 3
+seconds a document, so rerun only what a change affects.
+
 Check a dry run before `--apply`, and fix single documents by hand with
-`cairn tag` and `cairn meta`.
+`cairn tag` and `cairn meta`; a hand fix is safe from later runs.
 
 ## Pipes
 

@@ -823,6 +823,24 @@ front matter are often in another language.
 Each experiment stores its results in the database, so searching needs
 no model.
 
+A classifier that writes into documents (form, topics) leaves a
+receipt: one metadata value, `gen.form` or `gen.topics`, holding its
+version, the model, a content key (file id and the newest extraction
+time), a hash of its vocabulary, and what it wrote. It writes as
+author `cairn:NAME`. A run compares the receipt with the present:
+
+- no receipt and nothing written: new;
+- the document no longer holds what the receipt says was written: a
+  person changed it, and runs leave it alone unless it is named;
+- the content key differs: changed;
+- a lower version, another model, or another vocabulary hash: stale.
+
+A plain run takes new and changed documents only. Stale ones run with
+`--stale`, scoped with `--tag` when only one branch of the topics
+changed. A full rerun at 3 seconds a document is too costly to do on
+every change. Tags and metadata stay in one place; search never reads
+receipts.
+
 The topics classifier offers the top topics first, then at each level
 the topics under the ones just chosen, so each call sees 20 to 40
 choices with their scope notes instead of the whole list. The first

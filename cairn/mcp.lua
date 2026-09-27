@@ -160,7 +160,7 @@ function M.tools(d, path, author)
 			chars = mcptk.int{ default = 4000, min = 500, max = 16000,
 			    desc = "characters of text per page" },
 			meta = mcptk.bool{ default = false,
-			    desc = "also show the raw pdf.* and jev.* keys" },
+			    desc = "also show the raw pdf.*, jev.*, and gen.* keys" },
 			similar = mcptk.num{ default = search.SIMILAR, min = 0, max = 1,
 			    desc = "lowest score of the similar documents listed; "
 			    .. "lower shows more" },

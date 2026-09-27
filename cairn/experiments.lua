@@ -582,23 +582,121 @@ local function formstate(d, id)
 	    .. "\n\nStart of the document:\n" .. sample(chunks, 1, 2500)), w
 end
 
--- byhand(m) -> true when a person set a known form
-local function byhand(m)
-	local v = m["dcterms.type"]
+local receipt = require "cairn.receipt"
 
-	return type(v) == "string" and M.TYPES[v] ~= nil and not m["jev.model"]
-	    and not m["gen.type"]
+-- classifier versions; raising one makes earlier receipts old
+M.VERSION = { form = 2, topics = 3 }
+
+-- state(d, name, w, model, vocab, now, blank) -> the receipt state of
+-- version w for classifier name. now(w) is what w holds today; without
+-- a receipt, a value in blank (such as the default form note) counts
+-- as nothing written yet.
+function M.state(d, name, w, model, vocab, now, blank)
+	local r = receipt.parse(w.meta[receipt.key(name)])
+	local cur = now(w)
+
+	if not r then
+		return (cur == "" or (blank or {})[cur]) and "new" or "hand"
+	end
+	return receipt.state(r, { v = M.VERSION[name], model = model,
+	    content = receipt.content(d, w.content), vocab = vocab }, cur)
+end
+
+-- plan(p, d, name, model, vocab, now, blank) -> ids to run, counts by
+-- state. Named ids always run; --tag limits the candidates to one tag,
+-- topics under it included.
+local function plan(p, d, name, model, vocab, now, blank)
+	local store = require "cairn.store"
+	local cli = require "cairn.cli"
+	local run, ids, count, cand = receipt.which(p.opts), {}, {}, {}
+
+	if #p.args > 0 then
+		for _, a in ipairs(p.args) do
+			ids[#ids + 1] = cli.docid(d, a)
+		end
+		return ids, count
+	end
+	if p.opts.tag then
+		for _, h in ipairs((require("cairn.search").search(d, "",
+		    { tag = { p.opts.tag }, limit = 100000, max = 100000,
+		    chunks = 1 }))) do
+			cand[#cand + 1] = h.id
+		end
+	else
+		for _, r in ipairs(d:rows("SELECT id FROM doc WHERE hidden = 0 "
+		    .. "AND superseded_by IS NULL AND about IS NULL ORDER BY title")) do
+			cand[#cand + 1] = r.id
+		end
+	end
+	for _, id in ipairs(cand) do
+		local st = M.state(d, name, store.current(d, id), model, vocab, now,
+		    blank)
+
+		count[st] = (count[st] or 0) + 1
+		if run[st] then
+			ids[#ids + 1] = id
+		end
+	end
+	return ids, count
+end
+
+-- stamp(d, name, id, model, vocab, wrote, change) writes a new version
+-- of id as author cairn:NAME: change(w) edits it, and the receipt
+-- records what the classifier wrote
+local function stamp(d, name, id, model, vocab, wrote, change)
+	require("cairn.store").update(d, id, nil, "cairn:" .. name, function(w)
+		if change then
+			change(w)
+		end
+		w.meta[receipt.key(name)] = receipt.format({ v = M.VERSION[name],
+		    model = model, content = receipt.content(d, w.content),
+		    vocab = vocab, wrote = wrote })
+	end)
+end
+
+-- adopt(d, name, model, vocab, now, ok) writes a receipt for each
+-- document that holds a value but no receipt, when ok(w) says a model
+-- wrote it; returns the count
+local function adopt(d, name, model, vocab, now, ok)
+	local store = require "cairn.store"
+	local n = 0
+
+	for _, r in ipairs(d:rows("SELECT id FROM doc WHERE hidden = 0 AND "
+	    .. "superseded_by IS NULL AND about IS NULL")) do
+		local w = store.current(d, r.id)
+
+		if not w.meta[receipt.key(name)] and now(w) ~= "" and ok(w) then
+			stamp(d, name, r.id, model, vocab, now(w), function(nw)
+				nw.meta["gen.type"] = nil
+			end)
+			n = n + 1
+		end
+	end
+	return n
+end
+
+local function formnow(w)
+	local t = w.meta["dcterms.type"]
+
+	return type(t) == "string" and t or ""
+end
+
+local function formvocab()
+	local s = {}
+
+	for _, f in ipairs(require("cairn.vocab").forms) do
+		s[#s + 1] = f[1] .. "\t" .. f[2]
+	end
+	return receipt.hash(table.concat(s, "\n"))
 end
 
 M.list.form = {
-	usage = "form [ID... | --all] [--apply] [--model m]",
+	usage = "form [ID... | --stale | --all] [--tag t] [--apply] [--adopt]",
 	desc = "pick each document's form (dcterms.type) from the list in "
-	    .. "cairn/vocab.lua; without IDs only documents not judged yet; "
-	    .. "--apply writes it and drops form tags such as manual or paper",
+	    .. "cairn/vocab.lua; without IDs only new and changed documents; "
+	    .. "--apply writes it with a receipt and drops form tags",
 	run = function(p, d)
 		local lgml = require "cairn.lgml"
-		local store = require "cairn.store"
-		local cli = require "cairn.cli"
 		local client = lgml.available()
 		local model = p.opts.model or config.get(d, "lgml.decide")
 		local forms, lines = {}, {}
@@ -608,23 +706,18 @@ M.list.form = {
 			lines[#lines + 1] = ("- %s: %s"):format(f[1], f[2])
 		end
 
-		local ids, named = {}, #p.args > 0
+		local vocab = formvocab()
 
-		for _, a in ipairs(p.args) do
-			ids[#ids + 1] = cli.docid(d, a)
-		end
-		if not named then
-			for _, r in ipairs(d:rows("SELECT id FROM doc WHERE hidden = 0 "
-			    .. "AND superseded_by IS NULL AND about IS NULL "
-			    .. "ORDER BY title")) do
-				local m = store.current(d, r.id).meta
-
-				if not byhand(m) and (p.opts.all or not m["gen.type"]) then
-					ids[#ids + 1] = r.id
-				end
-			end
+		if p.opts.adopt then
+			print(("%d receipts written"):format(adopt(d, "form", model,
+			    vocab, formnow, function(w)
+				return w.meta["gen.type"] ~= nil
+			end)))
+			return
 		end
 
+		local ids = plan(p, d, "form", model, vocab, formnow,
+		    { note = true })
 		local c = lgml.client(d, { timeout = 600 })
 		local count, done, t0 = {}, 0, os.time()
 		local schema = { type = "object", additionalProperties = false,
@@ -669,7 +762,7 @@ M.list.form = {
 				    #drop > 0 and ("  (drops tag " .. table.concat(drop, " ")
 				    .. ")") or ""))
 				if p.opts.apply then
-					store.update(d, id, nil, cli.author(), function(nw)
+					stamp(d, "form", id, model, vocab, form, function(nw)
 						local keep = {}
 
 						for _, t in ipairs(nw.tags) do
@@ -679,7 +772,7 @@ M.list.form = {
 						end
 						nw.tags = keep
 						nw.meta["dcterms.type"] = form
-						nw.meta["gen.type"] = model
+						nw.meta["gen.type"] = nil
 					end)
 				end
 			end
@@ -732,6 +825,7 @@ local function topiclist(d)
 			up[name][#up[name] + 1] = b.value:sub(#topics.PREFIX + 1)
 		end
 	end
+	v.up = up
 	for _, name in ipairs(v.names) do
 		local known = 0
 
@@ -751,6 +845,32 @@ local function topiclist(d)
 		    .. "with cairn put --about topic/NAME", 0)
 	end
 	return v
+end
+
+-- topicnow(w) -> the topics a version holds, sorted, joined by commas
+local function topicnow(w)
+	local out = {}
+
+	for _, t in ipairs(w.tags) do
+		out[#out + 1] = t:match("^topic/(.+)$")
+	end
+	table.sort(out)
+	return table.concat(out, ",")
+end
+
+-- topicvocab(v) -> a hash of the topics, their scope notes and broader
+-- topics
+local function topicvocab(v)
+	local s = {}
+
+	for _, n in ipairs(v.names) do
+		local up = { table.unpack(v.up[n]) }
+
+		table.sort(up)
+		s[#s + 1] = ("%s\t%s\t%s"):format(n, v.scope[n], table.concat(up, " "))
+	end
+	table.sort(s)
+	return receipt.hash(table.concat(s, "\n"))
 end
 
 -- tagsof(d, id) -> the tags of a document with aliases resolved
@@ -1058,33 +1178,27 @@ function M.cap(v, leaves, istop)
 end
 
 M.list.topics = {
-	usage = "topics [ID... | --all] [--apply] [--model m]",
+	usage = "topics [ID... | --stale | --all] [--tag t] [--apply] [--adopt]",
 	desc = "pick general topics from the topic/ about pages, walking down "
-	    .. "from the top topics; without IDs only documents with no topic/ "
-	    .. "tag; --apply writes the most specific topics as tags",
+	    .. "from the top topics; without IDs only new and changed "
+	    .. "documents; --apply writes the most specific topics as tags",
 	run = function(p, d)
 		local lgml = require "cairn.lgml"
 		local store = require "cairn.store"
-		local cli = require "cairn.cli"
 		local model = p.opts.model or config.get(d, "lgml.decide")
 		local v = topiclist(d)
-		local c = lgml.client(d, { timeout = 600 })
-		local ids = {}
+		local vocab = topicvocab(v)
 
-		for _, a in ipairs(p.args) do
-			ids[#ids + 1] = cli.docid(d, a)
+		if p.opts.adopt then
+			print(("%d receipts written"):format(adopt(d, "topics", model,
+			    vocab, topicnow, function()
+				return true
+			end)))
+			return
 		end
-		if #ids == 0 then
-			-- about pages define tags; they take no topics
-			for _, r in ipairs(d:rows("SELECT id FROM doc d WHERE hidden = 0 "
-			    .. "AND superseded_by IS NULL AND about IS NULL AND (? OR NOT "
-			    .. "EXISTS (SELECT 1 FROM tag t LEFT JOIN tag_alias a ON "
-			    .. "a.alias = t.name WHERE t.doc = d.id AND coalesce(a.name, "
-			    .. "t.name) LIKE 'topic/%')) ORDER BY title",
-			    { p.opts.all and 1 or 0 })) do
-				ids[#ids + 1] = r.id
-			end
-		end
+
+		local ids = plan(p, d, "topics", model, vocab, topicnow)
+		local c = lgml.client(d, { timeout = 600 })
 
 		local count, wish, done, t0 = {}, {}, 0, os.time()
 
@@ -1108,7 +1222,11 @@ M.list.topics = {
 				    and ("  (suggests " .. table.concat(sug, " ") .. ")")
 				    or ""))
 				if p.opts.apply then
-					store.update(d, id, nil, cli.author(), function(nw)
+					local wrote = { table.unpack(leaves) }
+
+					table.sort(wrote)
+					stamp(d, "topics", id, model, vocab, table.concat(wrote,
+					    ","), function(nw)
 						local set, keep = {}, {}
 
 						for _, t in ipairs(nw.tags) do
@@ -1170,6 +1288,35 @@ M.list.topics = {
 		end
 		print(p.opts.apply and "topic tags written"
 		    or "dry run; --apply writes topic/NAME tags")
+	end,
+}
+
+M.list.status = {
+	usage = "status",
+	desc = "count documents by receipt state for form and topics: new, "
+	    .. "changed, old, model, vocab, current, and hand",
+	run = function(p, d)
+		local model = p.opts.model or config.get(d, "lgml.decide")
+		local q = { args = {}, opts = {} }
+		local _, fc = plan(q, d, "form", model, formvocab(), formnow,
+		    { note = true })
+		local okv, v = pcall(topiclist, d)
+		local tc = okv and select(2, plan(q, d, "topics", model,
+		    topicvocab(v), topicnow)) or {}
+		local states = { "new", "changed", "old", "model", "vocab",
+		    "current", "hand" }
+
+		print(("%-8s %s"):format("", table.concat(states, "  ")))
+		for _, x in ipairs({ { "form", fc }, { "topics", tc } }) do
+			local row = {}
+
+			for i, s in ipairs(states) do
+				row[i] = ("%" .. #s .. "d"):format(x[2][s] or 0)
+			end
+			print(("%-8s %s"):format(x[1], table.concat(row, "  ")))
+		end
+		print("a plain run takes new and changed; --stale adds old, model, "
+		    .. "and vocab; hand is never rerun unless named")
 	end,
 }
 

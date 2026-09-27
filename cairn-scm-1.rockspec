@@ -51,6 +51,7 @@ build = {
     ['cairn.proc'] = 'cairn/proc.lua',
     ['cairn.queue'] = 'cairn/queue.lua',
     ['cairn.schema'] = 'cairn/schema.lua',
+    ['cairn.receipt'] = 'cairn/receipt.lua',
     ['cairn.search'] = 'cairn/search.lua',
     ['cairn.sha256'] = 'cairn/sha256.lua',
     ['cairn.secret'] = 'cairn/secret.lua',

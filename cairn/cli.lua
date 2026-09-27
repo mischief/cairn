@@ -182,7 +182,7 @@ local LISTS = { t = "t", tag = "t", set = "set" }
 local FLAGS = { json = true, all = true, remove = true,
     ["from-file"] = true, ["dry-run"] = true, docs = true, meta = true,
     apply = true, force = true, hidden = true, ["about-pages"] = true,
-    l = true, ids = true, q = true, quiet = true,
+    l = true, ids = true, q = true, quiet = true, stale = true, adopt = true,
     unset = true,
     ["retry-failed"] = true, help = true, h = true }
 
@@ -488,7 +488,7 @@ M.render = {}
 local R = M.render
 
 -- metadata namespaces that R.doc leaves out unless allmeta is set
-local QUIET = { pdf = true, jev = true }
+local QUIET = { pdf = true, jev = true, gen = true }
 
 local function showdoc(v, allmeta)
 	local l = {
@@ -523,7 +523,7 @@ local function showdoc(v, allmeta)
 		    and table.concat(x, "; ") or x)
 	end
 	if quiet > 0 then
-		l[#l + 1] = ("(%d pdf.* and jev.* keys not shown)\n"):format(quiet)
+		l[#l + 1] = ("(%d pdf.*, jev.*, and gen.* keys not shown)\n"):format(quiet)
 	end
 	if v.about then
 		l[#l + 1] = "about page for tag " .. v.about .. "\n"
