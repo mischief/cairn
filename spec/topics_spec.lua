@@ -127,3 +127,18 @@ describe("topic cap", function()
 		    "software-engineering" }, got)
 	end)
 end)
+
+describe("close tags", function()
+	it("ignores a shared namespace and knows topics without documents", function()
+		local tags = require "cairn.tags"
+		local d = assert(db.open(":memory:"))
+
+		topics.seed(d, "cairn", VOCAB)
+		store.note(d, { title = "a", body = "b", author = "k",
+		    tags = { "topic/security", "topic/privacy" } })
+		assert.same({}, tags.close(d, "topic/anonymity"))
+		assert.same({}, tags.close(d, "topic/cryptography"))
+		assert.same({ "topic/security" }, tags.close(d, "securty"))
+		d:close()
+	end)
+end)

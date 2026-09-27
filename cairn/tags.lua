@@ -91,18 +91,23 @@ end
 
 -- close(d, name) -> existing tags with a close name, for a new tag
 function M.close(d, name)
-	if d:row("SELECT 1 FROM tag WHERE name = ?", { name }) then
+	if d:row("SELECT 1 FROM tag WHERE name = ?", { name })
+	    or d:row("SELECT 1 FROM doc WHERE about = ?", { name }) then
 		return {}
 	end
 
 	local out = {}
 	local st = d.sql:prepare("SELECT DISTINCT name FROM tag")
+	-- a shared namespace such as topic/ says nothing; compare what
+	-- follows the last "/"
+	local last = name:match("([^/]*)$")
 
 	for t in st:urows() do
+		local tl = t:match("([^/]*)$")
 		local shared = 0
 
-		while shared < math.min(#t, #name)
-		    and t:byte(shared + 1) == name:byte(shared + 1) do
+		while shared < math.min(#tl, #last)
+		    and tl:byte(shared + 1) == last:byte(shared + 1) do
 			shared = shared + 1
 		end
 		-- short names match too much: "c" sits inside most words
