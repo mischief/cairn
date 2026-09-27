@@ -3,15 +3,20 @@
 A knowledge store for agents and people. Notes and files (pdf, images,
 audio, office documents) live in one SQLite file, with full-text
 search over their text, OCR, image descriptions, and transcripts.
-Every file and document version has a CIDv1. Tags are the topics.
+Every file and document version has a CIDv1. Documents carry general
+topics from a fixed list (`topic/*` tags), free tags for the things
+they name, and a form such as manual or paper.
 
-DESIGN.md describes the data model and the decisions behind it.
+doc/guide.md shows how to use cairn: finding, writing, tagging, and
+running the store. DESIGN.md describes the data model and the
+decisions behind it.
 
 ## Use
 
     cairn init
+    cairn topics seed             # the starter topic list
     printf '# uart\n115200 baud on PA9\n' | cairn put "STM32 wiring" -t stm32
-    cairn attach datasheet.pdf -t stm32 -t datasheet --set dcterms.date=2021
+    cairn attach datasheet.pdf -t stm32 --set dcterms.type=datasheet --set dcterms.date=2021
     cairn check                   # which extractors are installed
     cairn enrich                  # extract text; run it in the background
     cairn search "baud tag:stm32"
