@@ -51,16 +51,22 @@ function M.check(text)
 		end
 	end
 	for line in text:gmatch("[^\n]+") do
+		-- URLs carry long mixed paths and commit hashes; the patterns
+		-- above still see a key inside one
+		line = line:gsub("%a[%w+.-]*://[^%s)%]>\"'`]+", " ")
+
 		local low = line:lower()
 
 		for _, k in ipairs(KEYWORDS) do
 			if low:find(k, 1, true) then
 				for word in line:gmatch("[%w+/=_%-]+") do
 					-- keys mix cases and digits; paths and
-					-- identifiers do not
+					-- identifiers do not. A CID looks like a key
+					-- but names public content.
 					if #word >= 32 and word:find("%d")
 					    and word:find("%u") and word:find("%l")
-					    and entropy(word) > 4.0 then
+					    and entropy(word) > 4.0
+					    and not require("cairn.cid").parse(word) then
 						return "high-entropy string near \""
 						    .. k .. "\""
 					end

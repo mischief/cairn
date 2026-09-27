@@ -7,10 +7,34 @@ local M = {}
 -- about 2000 tokens of English
 M.MAX = 8000
 
--- clean(s) -> s without NUL and other control bytes except \t \n \f.
--- A NUL cuts off FTS5 content.
+-- utf8(s) -> s with each byte that is not part of valid UTF-8 replaced
+-- by U+FFFD. Extractors can emit other encodings, and JSON and FTS5
+-- want UTF-8.
+function M.utf8(s)
+	if utf8.len(s) then
+		return s
+	end
+
+	local out, i = {}, 1
+
+	while i <= #s do
+		local n, bad = utf8.len(s, i)
+
+		if n then
+			out[#out + 1] = s:sub(i)
+			break
+		end
+		out[#out + 1] = s:sub(i, bad - 1)
+		out[#out + 1] = "\u{FFFD}"
+		i = bad + 1
+	end
+	return table.concat(out)
+end
+
+-- clean(s) -> valid UTF-8 without NUL and other control bytes except
+-- \t \n \f. A NUL cuts off FTS5 content.
 function M.clean(s)
-	return (s:gsub("[%z\1-\8\11\13-\31\127]", ""))
+	return (M.utf8(s):gsub("[%z\1-\8\11\13-\31\127]", ""))
 end
 
 -- split a body longer than MAX at paragraph, then line, then any

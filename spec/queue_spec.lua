@@ -112,6 +112,12 @@ describe("secret", function()
 		assert.is_nil(secret.check(
 		    "| `[logprob]` | `types/chat/chat_completion_token_logprob.py` |"))
 		assert.is_nil(secret.check("token: build-with-claude/token-counting-guide"))
+		assert.is_nil(secret.check(
+		    "the key QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG names it"))
+		assert.is_nil(secret.check("key: see https://github.com/libp2p/specs/"
+		    .. "blob/4e2c796bc77a2639136b277224468b7c48b9fff1/RFC/0001-text"))
+		assert.is_not_nil(secret.check("see https://x.example/"
+		    .. "?t=ghp_abcdefghijklmnopqrstuvwxyz0123456789"))
 		assert.equal("aws access key", secret.check("AKIAABCDEFGHIJKLMNOP"))
 		assert.is_not_nil(secret.check(
 		    "api_key: Zx8qP2vL9mN4rT7wK1yB6cH3jF5gD0sAe"))
@@ -159,5 +165,16 @@ describe("missing tools", function()
 		assert.equal(1, queue.revive(d))
 		assert.equal("pending", d:row("SELECT status FROM job"))
 		d:close()
+	end)
+end)
+
+describe("chunk.utf8", function()
+	it("replaces invalid bytes and keeps valid text", function()
+		assert.equal("abc", chunk.utf8("abc"))
+		assert.equal("z\u{00fc}rich", chunk.utf8("z\u{00fc}rich"))
+		assert.equal("a\u{FFFD}b", chunk.utf8("a\255b"))
+		assert.equal("x\u{FFFD}", chunk.utf8(("x\u{00fc}"):sub(1, 2)))
+		assert.equal("\u{FFFD}\u{FFFD}ok", chunk.utf8("\192\193ok"))
+		assert.is_truthy(utf8.len(chunk.clean("a\255\0b")))
 	end)
 end)
