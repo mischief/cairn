@@ -110,6 +110,10 @@ WHAT TO WRITE:
     `cairn tags` shows. Use "/" only for a real part or family. A
     general subject is a topic; the kind of document (manual, paper)
     goes in dcterms.type, not in a tag.
+  - A software project with a repository is project/OWNER/NAME, OWNER
+    being its user on the forge: project/mischief/cairn. Every note
+    about it gets that tag; tag:project/mischief finds them all. Put
+    the repository URL in dcterms.source.
   - A snippet is welcome when it solves a problem that comes back:
     short, tested code in a fenced block, inside a note that says
     what it does, when to use it, and what goes wrong without it. No

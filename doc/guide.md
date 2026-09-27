@@ -92,6 +92,13 @@ reuse the spelling `cairn tags` shows. Use `/` only for a real part or
 family. A general subject is a topic, not a free tag; the kind of
 document is a form, not a tag.
 
+A software project with a repository is `project/OWNER/NAME`, OWNER
+being its user on the forge: `project/mischief/cairn`. Every note about
+the project gets that tag, so `tag:project/mischief/cairn` finds its
+overview, decisions, and snippets together, and `tag:project/mischief`
+finds all of one owner's projects. The repository URL goes in
+`dcterms.source`.
+
 ### Forms
 
 The form says what kind of document something is. It lives in the

@@ -320,7 +320,11 @@ A filter value with spaces is quoted: `creator:"DoD NCSC"`.
 
 Tags come in two kinds. Topics are `topic/NAME` tags from a controlled
 list of general subjects. Free tags name specific things: projects,
-systems, products, chips, protocols, organizations.
+systems, products, chips, protocols, organizations. A software project
+with a repository is `project/OWNER/NAME`, so the notes about one
+project, and all of one owner's projects, sit under one prefix; the
+repository URL goes in `dcterms.source`. The note's own author stays
+in `dcterms.creator`.
 
 ```sql
 CREATE TABLE tag (
