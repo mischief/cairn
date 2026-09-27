@@ -17,7 +17,7 @@ transcripts are searchable through FTS5. Tags are the topics. A
 command-line tool first, with an MCP server for LLM agents.
 ]],
   homepage = 'https://git.offblast.org/mischief/cairn',
-  license = 'MIT',
+  license = 'ISC',
   labels = { 'knowledge', 'sqlite', 'fts5', 'mcp', 'cid', 'agents' },
 }
 

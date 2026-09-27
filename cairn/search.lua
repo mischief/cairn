@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: ISC
 -- search: parse a query, run it against doc_fts and chunk_fts, and
 -- group the hits by document.
 

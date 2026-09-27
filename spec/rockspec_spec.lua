@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: ISC
 local dirent = require "posix.dirent"
 
 describe("rockspec", function()

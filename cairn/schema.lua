@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: ISC
 -- schema: the cairn database layout, one entry per schema version.
 -- migrations[n] takes a database at user_version n-1 to n. DESIGN.md
 -- explains each table.

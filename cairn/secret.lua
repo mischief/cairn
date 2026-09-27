@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: ISC
 -- secret: refuse text that looks like it holds a credential. There is
 -- no deletion, so a stored secret stays forever.
 

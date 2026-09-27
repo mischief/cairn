@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: ISC
 -- db: open a cairn database and store blocks by CID. A block is
 -- immutable; writing the same bytes twice stores one row.
 

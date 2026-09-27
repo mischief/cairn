@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: ISC
 -- cli: the cairn command line. Each command takes the parsed options
 -- and prints plain text; --json prints JSON instead.
 

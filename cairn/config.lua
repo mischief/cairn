@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: ISC
 -- config: settings kept in the database, so a backup holds them too.
 -- An environment variable overrides the stored value for one process.
 

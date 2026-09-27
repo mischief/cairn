@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: ISC
 -- store: documents, versions, files, tags, and links over db. Every
 -- write makes a DRISL version node and moves the document head with a
 -- compare-and-swap on rev.

@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: ISC
 -- cid: CIDv1 (and CIDv0 on the way in), per ipfs/specs src/cid.md.
 --
 --      <cidv1> ::= <version=0x01><content-type><multihash>

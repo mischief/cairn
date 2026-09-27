@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: ISC
 -- mcp: the fast cairn commands as MCP tools over stdio. It never runs
 -- an extractor; after an attach it starts a detached `cairn enrich`.
 

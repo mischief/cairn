@@ -1,4 +1,5 @@
 #!/usr/bin/env lua5.4
+-- SPDX-License-Identifier: ISC
 -- cairn: a knowledge store for agents and people. See DESIGN.md.
 
 local cli = require "cairn.cli"

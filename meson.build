@@ -1,6 +1,6 @@
 # Pure Lua: nothing is built, only installed and tested.
 project('cairn', version : '0.1.0', meson_version : '>= 0.64.0',
-        license : 'MIT')
+        license : 'ISC')
 
 lua_version = get_option('lua_version')
 

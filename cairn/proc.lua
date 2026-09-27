@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: ISC
 -- proc: run a command with no shell and collect its output.
 
 local fcntl = require "posix.fcntl"

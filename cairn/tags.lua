@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: ISC
 -- tags: tag names, aliases, and close-name suggestions. Tags are the
 -- topics; a "/" makes a nested name.
 

@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: ISC
 -- drisl: DRISL, deterministic dag-cbor (https://dasl.ing/drisl.html),
 -- minus floats: encode refuses them and decode rejects them.
 -- Lua strings encode as text; M.bytes, M.link and M.null wrap the

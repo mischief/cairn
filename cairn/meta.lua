@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: ISC
 -- meta: per-document metadata as namespace.name keys, such as
 -- dcterms.date or pdf.Author. Values are text or lists of text.
 

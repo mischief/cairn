@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: ISC
 -- enrich: drain the extraction queue. Extractors run with no write
 -- transaction open; results go in with one short transaction.
 

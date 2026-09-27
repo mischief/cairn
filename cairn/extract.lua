@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: ISC
 -- extract: run external tools over file bytes. Each extractor returns
 -- a list of chunks, or raises. None of them touch the database.
 

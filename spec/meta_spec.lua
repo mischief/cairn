@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: ISC
 package.path = "./?.lua;./?/init.lua;" .. package.path
 
 local db = require "cairn.db"

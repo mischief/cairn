@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: ISC
 -- util: time, ids, and file helpers shared by the other modules.
 
 local rand = require "openssl.rand"

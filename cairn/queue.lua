@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: ISC
 -- queue: extraction jobs. An enricher claims a job with a lease, renews
 -- the lease while it works, and finishes only if it still holds it.
 

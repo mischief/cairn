@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: ISC
 -- chunk: split extracted text into chunks for the FTS index. A chunk
 -- is { page = n|nil, heading = s|nil, body = s }.
 
