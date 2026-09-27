@@ -118,6 +118,10 @@ describe("secret", function()
 		    .. "blob/4e2c796bc77a2639136b277224468b7c48b9fff1/RFC/0001-text"))
 		assert.is_not_nil(secret.check("see https://x.example/"
 		    .. "?t=ghp_abcdefghijklmnopqrstuvwxyz0123456789"))
+		assert.is_nil(secret.check("Key: us-18-Valsorda-Squeezing-A-Key-"
+		    .. "Through-A-Carry-Bit-wp.pdf"))
+		assert.is_not_nil(secret.check(
+		    "key: Zx8qP2vL-9mN4rT7wK1yB6cH3jF5gD0sAe-Qw"))
 		assert.equal("aws access key", secret.check("AKIAABCDEFGHIJKLMNOP"))
 		assert.is_not_nil(secret.check(
 		    "api_key: Zx8qP2vL9mN4rT7wK1yB6cH3jF5gD0sAe"))

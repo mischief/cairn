@@ -20,6 +20,20 @@ M.PATTERNS = {
 
 local KEYWORDS = { "key", "token", "secret", "passw", "credential" }
 
+-- wordy(s) -> true when s is words and short numbers joined by - or _,
+-- such as a file name in a URL: us-18-Valsorda-Squeezing-A-Key-Through
+local function wordy(s)
+	local parts = 0
+
+	for part in s:gmatch("[^%-_]+") do
+		if not (part:match("^%a+$") or part:match("^%d%d?%d?%d?$")) then
+			return false
+		end
+		parts = parts + 1
+	end
+	return parts >= 3
+end
+
 -- bits of entropy per character of s
 local function entropy(s)
 	local counts = {}
@@ -65,7 +79,7 @@ function M.check(text)
 					-- but names public content.
 					if #word >= 32 and word:find("%d")
 					    and word:find("%u") and word:find("%l")
-					    and entropy(word) > 4.0
+					    and entropy(word) > 4.0 and not wordy(word)
 					    and not require("cairn.cid").parse(word) then
 						return "high-entropy string near \""
 						    .. k .. "\""
