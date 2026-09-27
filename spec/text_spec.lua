@@ -184,3 +184,21 @@ describe("classifier authors", function()
 		d:close()
 	end)
 end)
+
+describe("pandoc", function()
+	it("keeps headings and link text from HTML", function()
+		if not require("cairn.util").which("pandoc") then
+			return
+		end
+
+		local html = [[<h1>API</h1><h2 id="f">new_state</h2>
+<p>Call <a href="#g"><code>free_state</code></a> after <b>use</b>.</p>
+<img src="logo.png" alt="logo"><div><span>end</span></div>]]
+		local ch = extract.pandoc(html, "text/html")
+
+		assert.equal("API > new_state", ch[1].heading)
+		assert.matches("Call `free_state` after %*%*use%*%*%.", ch[1].body)
+		assert.is_nil(ch[1].body:find("logo", 1, true))
+		assert.is_nil(ch[1].body:find("#g", 1, true))
+	end)
+end)

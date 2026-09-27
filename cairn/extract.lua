@@ -8,7 +8,7 @@ local util = require "cairn.util"
 
 local M = {}
 
-M.VERSION = { pdf = 2, ocr = 1, vision = 1, transcript = 1, pandoc = 1 }
+M.VERSION = { pdf = 2, ocr = 1, vision = 1, transcript = 1, pandoc = 2 }
 
 -- commands each kind of job runs; ocr of a pdf also needs pdftoppm
 M.TOOLS = {
@@ -272,17 +272,41 @@ local PANDOC = {
 	    .. ".wordprocessingml.document"] = "docx",
 }
 
--- pandoc(data, mime, opts) -> chunks of plain text
+-- a pandoc filter that keeps the text of links, spans, and divs, and
+-- drops images and raw HTML, so markdown output reads as text
+M.FILTER = [[
+function Link(el) return el.content end
+function Image() return {} end
+function Span(el) return el.content end
+function Div(el) return el.content end
+function RawInline() return {} end
+function RawBlock() return {} end
+]]
+
+-- pandoc(data, mime, opts) -> chunks split at the document's headings.
+-- Markdown keeps headings and tables; the backslashes markdown puts
+-- before punctuation are removed.
 function M.pandoc(data, mime, opts)
 	local from = PANDOC[mime]
 
 	if not from then
 		error("pandoc does not read " .. tostring(mime), 0)
 	end
-	return with(data, mime, function(path)
-		return chunk.plain(run({ "pandoc", "-f", from, "-t", "plain",
-		    "--wrap=none", path }, opts))
+
+	local filter = util.tmpfile(".lua")
+
+	assert(util.writefile(filter, M.FILTER))
+
+	local ok, text = pcall(with, data, mime, function(path)
+		return run({ "pandoc", "-f", from, "-t", "gfm-raw_html",
+		    "--wrap=none", "-L", filter, path }, opts)
 	end)
+
+	os.remove(filter)
+	if not ok then
+		error(text, 0)
+	end
+	return chunk.markdown((text:gsub("\\(%p)", "%1")))
 end
 
 return M
