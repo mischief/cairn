@@ -343,3 +343,16 @@ Values an experiment writes carry the model name (`gen.type`,
 `jev.model`), so a later run can tell them from values a person set.
 Check a dry run before `--apply`, and fix single documents by hand with
 `cairn tag` and `cairn meta`.
+
+## Pipes
+
+`search -l` prints only ids, one a line, with no limit. `search -q`
+prints nothing. Both exit 1 when nothing matches, as grep does. `get`,
+`related`, `hide`, and `unhide` read ids from standard input when the
+id is `-`.
+
+    cairn search -l 'type:paper tag:topic/kernels' | cairn get -
+    cairn search -l 'tag:ipfs date:<2020' | xargs -I{} cairn tag {} +legacy
+    cairn search -q 'virtqueue' && echo known
+
+`--json` gives every command's full result for jq.

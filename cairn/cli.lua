@@ -135,9 +135,9 @@ usage: cairn [-d db] [--json] command [args]
                                     the state of the database and queue
   enrich [--max n] [--retry-failed]
                                     drain the extraction queue
-  search <query> [--all] [--limit n] [--chunks n]
+  search <query> [--all] [--limit n] [--chunks n] [-l] [-q]
                                     search; alone, prints its own help
-  get <id|cid|uri> [--rev n] [--page n] [--at p=N|p=N-M|text]
+  get <id|cid|uri|-> [--rev n] [--page n] [--at p=N|p=N-M|text]
       [--meta] [--similar min]
                                     show a document
   cat <id|cid> [out]                write the file bytes
@@ -150,9 +150,9 @@ usage: cairn [-d db] [--json] command [args]
   wanted                            titles linked but not written
   meta <id> [key=v|key=|key+=v]... [--from-file]
                                     show or change metadata
-  related <id> [--depth n] [--similar min]
+  related <id|-> [--depth n] [--similar min]
                                     linked documents, then similar ones
-  hide <id>, unhide <id>            hide or show a document
+  hide <id|->, unhide <id|->        hide or show a document
   recent [--since t] [--author a]   recent versions
   alias <alias> <tag>               add a tag alias
   reindex [--kind k]                queue extraction again
@@ -182,6 +182,7 @@ local LISTS = { t = "t", tag = "t", set = "set" }
 local FLAGS = { json = true, all = true, remove = true,
     ["from-file"] = true, ["dry-run"] = true, docs = true, meta = true,
     apply = true, force = true, hidden = true, ["about-pages"] = true,
+    l = true, ids = true, q = true, quiet = true,
     unset = true,
     ["retry-failed"] = true, help = true, h = true }
 
@@ -843,7 +844,7 @@ end
 
 M.SEARCHHELP = [=[
 usage: cairn search QUERY [--limit n] [--offset n] [--chunks n] [--all]
-                   [--hidden] [--about-pages]
+                   [--hidden] [--about-pages] [-l] [-q]
                    [-t tag]... [--json]
 
 QUERY is words, matched as words and word starts in titles, tags, and
@@ -863,10 +864,15 @@ found again and unhidden: cairn search --hidden '*'.
 other searches leave them out. cairn tags shows their scope notes.
 --all includes superseded documents. --chunks sets the passages shown
 per document (3). A query of filters alone lists the newest documents.
+-l prints only the id of every hit, one a line; -q prints nothing.
+search exits 1 when nothing matches. get, related, hide, and unhide
+read ids from standard input when the id is -.
 Examples:
   cairn search 'virtqueue notification'
   cairn search 'name space tag:plan9'
   cairn search 'date:<1990 tag:security'
+  cairn search -l 'type:paper tag:topic/kernels' | cairn get -
+  cairn search -q 'virtqueue' && echo known
 ]=]
 
 function C.search(p, d)
@@ -876,26 +882,76 @@ function C.search(p, d)
 		io.write(M.SEARCHHELP)
 		return
 	end
+	-- -l lists every hit's id, one a line; -q prints nothing. Both exit
+	-- 1 when nothing matches, as grep does.
+	local ids, quiet = p.opts.l or p.opts.ids, p.opts.q or p.opts.quiet
+	local limit = math.tointeger(tonumber(p.opts.limit))
 	local hits, total = search.search(d, q, { tag = p.opts.t,
 	    superseded = p.opts.all, hidden = p.opts.hidden,
 	    about = p.opts["about-pages"],
-	    limit = math.tointeger(tonumber(p.opts.limit)),
+	    limit = quiet and 1 or limit or (ids and M.ALL) or nil,
+	    max = (ids or quiet) and M.ALL or nil,
 	    offset = math.tointeger(tonumber(p.opts.offset)),
-	    chunks = math.tointeger(tonumber(p.opts.chunks)) })
+	    chunks = (ids or quiet) and 1
+	    or math.tointeger(tonumber(p.opts.chunks)) })
 
-	out(p.opts, { hits = hits, total = total }, R.hits)
+	if ids then
+		for _, h in ipairs(hits) do
+			io.write(h.id, "\n")
+		end
+	elseif not quiet then
+		out(p.opts, { hits = hits, total = total }, R.hits)
+	end
+	return #hits > 0 and 0 or 1
+end
+
+-- most ids search -l lists
+M.ALL = 100000
+
+-- ids(p, d) -> document ids from the first argument, or from standard
+-- input, one a line, when the argument is "-"
+function M.ids(p, d, what)
+	local a = p.args[1] or error(what .. " needs an id, or - to read ids", 0)
+	local out = {}
+
+	if a ~= "-" then
+		return { M.docid(d, a) }
+	end
+	for line in io.lines() do
+		local s = line:match("^%s*(%S+)")
+
+		if s then
+			out[#out + 1] = M.docid(d, s)
+		end
+	end
+	return out
 end
 
 
 function C.get(p, d)
-	local id, rev, frag = M.target(d, p.args[1] or error("get needs an id", 0))
+	local targets = {}
 
-	out(p.opts, M.view(d, id, math.tointeger(tonumber(p.opts.rev)) or rev,
-	    math.tointeger(tonumber(p.opts.page)), p.opts.at or frag, nil,
-	    tonumber(p.opts.similar)),
-	    function(v)
-		return R.doc(v, p.opts.meta)
-	end)
+	if p.args[1] == "-" then
+		for _, id in ipairs(M.ids(p, d, "get")) do
+			targets[#targets + 1] = { id }
+		end
+	else
+		targets[1] = { M.target(d, p.args[1]
+		    or error("get needs an id, or - to read ids", 0)) }
+	end
+	for i, t in ipairs(targets) do
+		local id, rev, frag = t[1], t[2], t[3]
+
+		if i > 1 then
+			io.write("\n")
+		end
+		out(p.opts, M.view(d, id, math.tointeger(tonumber(p.opts.rev))
+		    or rev, math.tointeger(tonumber(p.opts.page)),
+		    p.opts.at or frag, nil, tonumber(p.opts.similar)),
+		    function(v)
+			return R.doc(v, p.opts.meta)
+		end)
+	end
 end
 
 function C.cat(p, d)
@@ -1028,25 +1084,33 @@ end
 
 
 function C.related(p, d)
-	local id = M.docid(d, p.args[1] or error("related needs an id", 0))
+	for i, id in ipairs(M.ids(p, d, "related")) do
+		local near = search.similar(d, id, tonumber(p.opts.similar))
 
-	local near = search.similar(d, id, tonumber(p.opts.similar))
-
-	out(p.opts, search.related(d, id,
-	    math.tointeger(tonumber(p.opts.depth)) or 1, p.opts.rel),
-	    function(rows)
-		return R.related(rows, near)
-	end)
+		if i > 1 then
+			io.write("\n")
+		end
+		-- from standard input, name each document before its list
+		if p.args[1] == "-" and not p.opts.json then
+			io.write(("%s  %s\n"):format(id, store.doc(d, id).title))
+		end
+		out(p.opts, search.related(d, id,
+		    math.tointeger(tonumber(p.opts.depth)) or 1, p.opts.rel),
+		    function(rows)
+			return R.related(rows, near)
+		end)
+	end
 end
 
 
 local function sethidden(p, d, hidden)
-	local id = M.docid(d, p.args[1] or error("needs an id", 0))
-	local nid, rev = store.update(d, id, nil, M.author(), function(w)
-		w.hidden = hidden
-	end)
+	for _, id in ipairs(M.ids(p, d, hidden and "hide" or "unhide")) do
+		local nid, rev = store.update(d, id, nil, M.author(), function(w)
+			w.hidden = hidden
+		end)
 
-	newrev(p, nid, rev)
+		newrev(p, nid, rev)
+	end
 end
 
 function C.hide(p, d)
@@ -1359,7 +1423,8 @@ function M.main(argv)
 		io.stderr:write("cairn: ", tostring(conflict(err)), "\n")
 		return 1
 	end
-	return 0
+	-- a command may return its own exit status, as search does
+	return math.tointeger(err) or 0
 end
 
 return M

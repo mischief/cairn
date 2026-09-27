@@ -232,7 +232,7 @@ function M.search(d, q, opts)
 		f.tag[#f.tag + 1] = t
 	end
 
-	local limit = math.min(opts.limit or M.LIMIT, M.MAXLIMIT)
+	local limit = math.min(opts.limit or M.LIMIT, opts.max or M.MAXLIMIT)
 	local per = math.max(1, math.min(opts.chunks or M.CHUNKS, M.MAXCHUNKS))
 	local offset = opts.offset or 0
 	local where, wargs = filters(d, f, opts)
