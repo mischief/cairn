@@ -554,30 +554,52 @@ M.list.expand = {
 
 -- topics: a model picks the general topics of each document. The
 -- topics are the tags topic/NAME that have an about page; the page's
--- scope note tells the model what each one covers. Each pick becomes a
--- topic/NAME tag.
+-- scope note tells the model what each one covers, and skos.broader
+-- places it in the hierarchy. The most specific picks become
+-- topic/NAME tags; a search for a broader topic finds them too.
 
-M.TOPICS_MAX = 4
-
--- topiclist(d) -> list of topic names, map of name to scope note
+-- topiclist(d) -> the topics: { names, label, scope, children, tops },
+-- read from the about pages of topic/ tags and their skos.broader
 local function topiclist(d)
-	local search = require "cairn.search"
-	local out, scope = {}, {}
+	local topics = require "cairn.topics"
+	local v = { names = {}, label = {}, scope = {}, children = {},
+	    tops = {} }
+	local up = {}
 
-	for _, r in ipairs(search.tags(d, "topic/")) do
-		local name = r.name:match("^topic/(.+)$")
+	for _, r in ipairs(d:rows("SELECT id, about, title FROM doc WHERE about "
+	    .. "LIKE 'topic/%' AND hidden = 0 AND superseded_by IS NULL "
+	    .. "ORDER BY about")) do
+		local name = r.about:sub(#topics.PREFIX + 1)
 
-		if name and r.about then
-			out[#out + 1] = name
-			scope[name] = r.scope or ""
+		v.names[#v.names + 1] = name
+		v.label[name] = r.title
+		v.scope[name] = d:row("SELECT value FROM meta WHERE doc = ? AND "
+		    .. "key = ? ORDER BY seq LIMIT 1", { r.id, topics.SCOPE }) or ""
+		up[name] = {}
+		for _, b in ipairs(d:rows("SELECT value FROM meta WHERE doc = ? AND "
+		    .. "key = ? ORDER BY seq", { r.id, topics.BROADER })) do
+			up[name][#up[name] + 1] = b.value:sub(#topics.PREFIX + 1)
 		end
 	end
-	if #out == 0 then
-		error("no topics: write an about page for each, such as\n"
-		    .. "  cairn put 'Topic: security' --about topic/security "
-		    .. "--set skos.scopeNote='threats and defenses' < body.md", 0)
+	for _, name in ipairs(v.names) do
+		local known = 0
+
+		for _, b in ipairs(up[name]) do
+			if v.label[b] then
+				known = known + 1
+				v.children[b] = v.children[b] or {}
+				v.children[b][#v.children[b] + 1] = name
+			end
+		end
+		if known == 0 then
+			v.tops[#v.tops + 1] = name
+		end
 	end
-	return out, scope
+	if #v.names == 0 then
+		error("no topics: run cairn topics seed, or write an about page "
+		    .. "with cairn put --about topic/NAME", 0)
+	end
+	return v
 end
 
 -- tagsof(d, id) -> the tags of a document with aliases resolved
@@ -641,35 +663,65 @@ local function topicstate(d, id)
 	    .. "\n\nStart of the document:\n" .. body), w
 end
 
--- pick(c, model, list, scope, state) -> list of topics, list of
--- suggested topics not in the list; or nil, error. The model first
--- names topics in its own words, so a topic missing from the list
--- still shows.
-local function pick(c, model, list, scope, state)
+M.PICK = "Pick a topic only when a reader who studies that topic would "
+    .. "want this document. Use each topic as its note defines it, not as "
+    .. "its name sounds. Do not pick a topic for a side fact, such as the "
+    .. "language a program is written in. Fewer topics are better than "
+    .. "weak ones."
+
+M.SUBJECTS = "In subjects, name 1 to 3 topics of this document in your "
+    .. "own words, whether or not the list holds them. Make each as broad "
+    .. "as the topics in the list: one or two lowercase words joined by a "
+    .. "hyphen, not what this one document covers, and not a product or "
+    .. "project."
+
+-- pick(c, model, v, cand, state, o) -> list of topics from cand, list
+-- of suggested topics not in the vocabulary; or nil, error. o: min,
+-- max, subjects (ask for own words), above (the broader topics already
+-- chosen).
+local function pick(c, model, v, cand, state, o)
 	local client = require("cairn.lgml").available()
-	local seen = {}
+	local ok_ = {}
+	local lines = {}
 
-	for _, t in ipairs(list) do
-		seen[t] = false
+	for _, t in ipairs(cand) do
+		ok_[t] = true
+		lines[#lines + 1] = ("- %s (%s): %s"):format(t, v.label[t], v.scope[t])
 	end
 
-	local schema = {
-		type = "object",
-		additionalProperties = false,
-		required = client.array({ "subjects", "topics" }),
-		properties = {
-			subjects = { type = "array", minItems = 1, maxItems = 3, items = {
-			    type = "string", pattern = "^[a-z]+(-[a-z]+)?$" } },
-			topics = { type = "array", minItems = 1,
-			    maxItems = M.TOPICS_MAX,
-			    items = { type = "string", enum = client.array(list) } },
-		},
-	}
-	local err, lines = nil, {}
+	local props = { topics = { type = "array", minItems = o.min,
+	    maxItems = o.max, items = { type = "string",
+	    enum = client.array(cand) } } }
+	local req = { "topics" }
+	local ask = {}
 
-	for _, t in ipairs(list) do
-		lines[#lines + 1] = ("- %s: %s"):format(t, scope[t])
+	if o.subjects then
+		props.subjects = { type = "array", minItems = 1, maxItems = 3,
+		    items = { type = "string", pattern = "^[a-z]+(-[a-z]+)?$" } }
+		req = { "subjects", "topics" }
+		ask[#ask + 1] = M.SUBJECTS
 	end
+	if o.above then
+		local ab = {}
+
+		for _, t in ipairs(o.above) do
+			ab[#ab + 1] = ("%s (%s)"):format(t, v.label[t])
+		end
+		ask[#ask + 1] = ("This document is about %s. The list holds the "
+		    .. "narrower topics under those. In topics, pick up to %d that "
+		    .. "fit the document. Most documents fit at least one; pick "
+		    .. "none only when no topic in the list fits at all.")
+		    :format(table.concat(ab, ", "), o.max)
+	else
+		ask[#ask + 1] = ("In topics, pick %d to %d from the list.")
+		    :format(o.min, o.max)
+	end
+	ask[#ask + 1] = M.PICK
+
+	local schema = { type = "object", additionalProperties = false,
+	    required = client.array(req), properties = props }
+	local err
+
 	for _ = 1, 2 do
 		local r, e = c:call("POST", "/v1/chat/completions", {
 			model = model,
@@ -681,21 +733,9 @@ local function pick(c, model, list, scope, state)
 			messages = { {
 				role = "user",
 				content = ("This is a list of topics, each with a note on "
-				    .. "what it covers:\n%s\n\nIn subjects, "
-				    .. "name 1 to 3 topics of this document in your own "
-				    .. "words, whether or not the list holds them. Make each "
-				    .. "as broad as the topics in the list: one or two "
-				    .. "lowercase words joined by a hyphen, not what this "
-				    .. "one document covers, and not a product or project."
-				    .. "\n\nIn topics, pick 1 to %d from the list. Use "
-				    .. "each topic as its note defines it, not as its name "
-				    .. "sounds. Pick a topic only when a reader who studies "
-				    .. "that topic "
-				    .. "would want this document. Do not pick a topic for "
-				    .. "a side fact, such as the language a program is "
-				    .. "written in. Fewer topics are better than weak "
-				    .. "ones.\n\n%s"):format(table.concat(lines, "\n"),
-				    M.TOPICS_MAX, state),
+				    .. "what it covers:\n%s\n\n%s\n\n%s"):format(
+				    table.concat(lines, "\n"), table.concat(ask, "\n\n"),
+				    state),
 			} },
 		})
 		local text = r and r.choices and r.choices[1]
@@ -703,24 +743,26 @@ local function pick(c, model, list, scope, state)
 		local ok, a = pcall(client.json.decode, text or "")
 
 		if ok and type(a) == "table" and type(a.topics) == "table" then
-			local out = {}
+			local out, seen = {}, {}
 
 			for _, t in ipairs(a.topics) do
-				if seen[t] == false and #out < M.TOPICS_MAX then
+				if ok_[t] and not seen[t] and #out < o.max then
 					seen[t] = true
 					out[#out + 1] = t
 				end
 			end
-			if #out > 0 then
-				local sug = {}
 
-				-- own words the list holds, also as a plural, are no news
-				for _, t in ipairs(type(a.subjects) == "table" and a.subjects or {}) do
-					if type(t) == "string" and seen[t] == nil
-					    and seen[(t:gsub("s$", ""))] == nil then
-						sug[#sug + 1] = t
-					end
+			local sug = {}
+
+			-- own words the vocabulary holds, also as a plural, are no news
+			for _, t in ipairs(type(a.subjects) == "table" and a.subjects
+			    or {}) do
+				if type(t) == "string" and not v.label[t]
+				    and not v.label[(t:gsub("s$", ""))] then
+					sug[#sug + 1] = t
 				end
+			end
+			if #out >= o.min then
 				return out, sug
 			end
 		end
@@ -729,17 +771,91 @@ local function pick(c, model, list, scope, state)
 	return nil, err
 end
 
+-- deepest levels the classifier walks below the top topics
+M.DEPTH = 5
+
+-- classify(c, model, v, state) -> the most specific topics chosen,
+-- every topic chosen, suggestions; or nil, error. It picks top topics,
+-- then walks down: at each level it offers the topics under the ones
+-- just chosen.
+local function classify(c, model, v, state)
+	local got, sug = pick(c, model, v, v.tops, state, { min = 1, max = 3,
+	    subjects = true })
+
+	if not got then
+		return nil, sug
+	end
+
+	local chosen, order, frontier = {}, {}, got
+
+	for _, t in ipairs(got) do
+		chosen[t] = true
+		order[#order + 1] = t
+	end
+	for level = 1, M.DEPTH do
+		local cand, seen = {}, {}
+
+		for _, f in ipairs(frontier) do
+			for _, ch in ipairs(v.children[f] or {}) do
+				if not chosen[ch] and not seen[ch] then
+					seen[ch] = true
+					cand[#cand + 1] = ch
+				end
+			end
+		end
+		if #cand == 0 then
+			break
+		end
+
+		-- no document is only about a top topic, so the first step down
+		-- must pick one
+		local more = pick(c, model, v, cand, state, { min = level == 1
+		    and 1 or 0, max = 4, above = frontier })
+
+		if not more or #more == 0 then
+			break
+		end
+		for _, t in ipairs(more) do
+			chosen[t] = true
+			order[#order + 1] = t
+		end
+		frontier = more
+	end
+
+	-- a chosen topic with a chosen topic under it is not a leaf, and a
+	-- bare top topic says little next to deeper ones
+	local leaves, deep, istop = {}, false, {}
+
+	for _, t in ipairs(v.tops) do
+		istop[t] = true
+	end
+	for _, t in ipairs(order) do
+		deep = deep or not istop[t]
+	end
+	for _, t in ipairs(order) do
+		local inner = false
+
+		for _, ch in ipairs(v.children[t] or {}) do
+			inner = inner or chosen[ch] == true
+		end
+		if not inner and not (deep and istop[t]) then
+			leaves[#leaves + 1] = t
+		end
+	end
+	return leaves, order, sug
+end
+
 M.list.topics = {
 	usage = "topics [ID... | --all] [--apply] [--model m]",
-	desc = "pick general topics: the topic/ tags with an about page; "
-	    .. "without IDs only documents with no topic/ tag; --apply adds "
-	    .. "topic/NAME tags",
+	desc = "pick general topics from the topic/ about pages, walking down "
+	    .. "from the top topics; without IDs only documents with no topic/ "
+	    .. "tag; --apply writes the most specific topics as tags",
 	run = function(p, d)
 		local lgml = require "cairn.lgml"
 		local store = require "cairn.store"
 		local cli = require "cairn.cli"
 		local model = p.opts.model or config.get(d, "lgml.decide")
-		local list, scope = topiclist(d)
+		local v = topiclist(d)
 		local c = lgml.client(d, { timeout = 600 })
 		local ids = {}
 
@@ -747,13 +863,13 @@ M.list.topics = {
 			ids[#ids + 1] = cli.docid(d, a)
 		end
 		if #ids == 0 then
-			-- the about pages of topics define them; they take none
+			-- about pages define tags; they take no topics
 			for _, r in ipairs(d:rows("SELECT id FROM doc d WHERE hidden = 0 "
-			    .. "AND superseded_by IS NULL AND (about IS NULL OR about NOT "
-			    .. "LIKE 'topic/%') AND (? OR NOT EXISTS (SELECT 1 "
-			    .. "FROM tag t LEFT JOIN tag_alias a ON a.alias = t.name "
-			    .. "WHERE t.doc = d.id AND coalesce(a.name, t.name) LIKE "
-			    .. "'topic/%')) ORDER BY title", { p.opts.all and 1 or 0 })) do
+			    .. "AND superseded_by IS NULL AND about IS NULL AND (? OR NOT "
+			    .. "EXISTS (SELECT 1 FROM tag t LEFT JOIN tag_alias a ON "
+			    .. "a.alias = t.name WHERE t.doc = d.id AND coalesce(a.name, "
+			    .. "t.name) LIKE 'topic/%')) ORDER BY title",
+			    { p.opts.all and 1 or 0 })) do
 				ids[#ids + 1] = r.id
 			end
 		end
@@ -762,13 +878,13 @@ M.list.topics = {
 
 		for _, id in ipairs(ids) do
 			local state, w = topicstate(d, id)
-			local got, sug = pick(c, model, list, scope, state)
+			local leaves, all, sug = classify(c, model, v, state)
 
-			if not got then
-				print(("%s  error: %s"):format(id, sug))
+			if not leaves then
+				print(("%s  error: %s"):format(id, all))
 			else
 				done = done + 1
-				for _, t in ipairs(got) do
+				for _, t in ipairs(all) do
 					count[t] = (count[t] or 0) + 1
 				end
 				for _, t in ipairs(sug) do
@@ -776,7 +892,7 @@ M.list.topics = {
 				end
 				print(("%s  %-50s  %s%s"):format(id,
 				    require("cairn.chunk").utf8(w.title:sub(1, 50)),
-				    table.concat(got, " "), #sug > 0
+				    table.concat(leaves, " "), #sug > 0
 				    and ("  (suggests " .. table.concat(sug, " ") .. ")")
 				    or ""))
 				if p.opts.apply then
@@ -790,8 +906,8 @@ M.list.topics = {
 								set[t] = true
 							end
 						end
-						for _, t in ipairs(got) do
-							set[store.resolve_tag(d, "topic/" .. t)] = true
+						for _, t in ipairs(leaves) do
+							set["topic/" .. t] = true
 						end
 						for t in pairs(set) do
 							keep[#keep + 1] = t
@@ -804,26 +920,28 @@ M.list.topics = {
 		end
 		c:close()
 
-		-- a topic on most documents, or on one, sorts nothing
-		print(("\n%d documents, %d s"):format(done, os.time() - t0))
-		for _, t in ipairs(list) do
-			local n = count[t] or 0
-			local note = ""
+		-- how often each topic was chosen at any level; top topics on
+		-- most documents, or narrow ones on one, may need a better note
+		local rows = {}
 
-			if done >= 10 and n > done * 0.4 then
-				note = "  too broad?"
-			elseif done >= 10 and n < 2 then
-				note = "  too rare?"
-			end
-			print(("  %-22s %4d  %3d%%%s"):format(t, n,
-			    done > 0 and n * 100 // done or 0, note))
+		for t, n in pairs(count) do
+			rows[#rows + 1] = { t = t, n = n }
+		end
+		table.sort(rows, function(a, b)
+			return a.n > b.n or (a.n == b.n and a.t < b.t)
+		end)
+		print(("\n%d documents, %d s; topics chosen at any level:")
+		    :format(done, os.time() - t0))
+		for _, x in ipairs(rows) do
+			print(("  %-30s %4d  %3d%%"):format(x.t, x.n,
+			    done > 0 and x.n * 100 // done or 0))
 		end
 
 		-- suggestions are never written; a good one becomes a topic when
-		-- someone writes its about page
+		-- someone writes its about page. Own words vary, so on a big run
+		-- only repeated ones mean a gap.
 		local ws = {}
 
-		-- own words vary; on a big run only repeated ones mean a gap
 		for t, n in pairs(wish) do
 			if done < 10 or n >= 2 then
 				ws[#ws + 1] = { t = t, n = n }
@@ -835,7 +953,7 @@ M.list.topics = {
 		if #ws > 0 then
 			print("\nsuggested topics that have no about page:")
 			for _, x in ipairs(ws) do
-				print(("  %-22s %4d"):format(x.t, x.n))
+				print(("  %-30s %4d"):format(x.t, x.n))
 			end
 		end
 		print(p.opts.apply and "topic tags written"
