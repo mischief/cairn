@@ -318,7 +318,9 @@ A filter value with spaces is quoted: `creator:"DoD NCSC"`.
 
 ### Tags
 
-Tags are the topics. There is no topic tree and no parent link.
+Tags come in two kinds. Topics are `topic/NAME` tags from a controlled
+list of general subjects. Free tags name specific things: projects,
+systems, products, chips, protocols, organizations.
 
 ```sql
 CREATE TABLE tag (
@@ -340,15 +342,67 @@ CREATE TABLE tag_alias (
   match `hwmon`.
 - Aliases resolve on every write and every read: `sqlite3` becomes
   `sqlite` in a stored tag, in a `tag:` filter, and in `cairn tags`.
+  The starter topic list makes no aliases: an alias that silently
+  turns a free tag into a topic on write surprises agents.
 - `put` and `attach` show existing tags with close names: by edit
-  distance, by shared prefix, and by alias. This keeps the topics
-  clean, so writers reuse tags instead of making new spellings.
+  distance, by shared prefix after the last `/`, and by alias. This
+  keeps tags clean, so writers reuse tags instead of making new
+  spellings.
 - `cairn tags` lists tags with their document counts and the tags that
   appear with them most. It shows nested names as a tree.
 - A filter on two tags means documents with both tags.
 - One visible, current document can be the `about` page for a tag. A
   second claim fails. To take over a tag page, a new document
-  supersedes the old one. `doc.about` has an index.
+  supersedes the old one. `doc.about` has an index. The about page's
+  `skos.scopeNote` is one line on what the tag covers; `cairn tags`
+  prints it. Search and `recent` leave about pages out.
+
+#### Topics
+
+A topic is a `topic/NAME` tag with an about page. The model follows
+SKOS and ANSI/NISO Z39.19:
+
+| SKOS | cairn |
+|---|---|
+| concept | the about page |
+| `skos:notation` | the slug in `topic/NAME` |
+| `skos:prefLabel` | the about page title, in LCSH style: "Computer security" |
+| `skos:scopeNote` | metadata `skos.scopeNote` |
+| `skos:broader` | metadata `skos.broader`, one or more `topic/` tags |
+
+- The hierarchy lives in `skos.broader`, not in the slug. A topic can
+  have several broader topics (`cryptography` is under `security` and
+  `mathematics`); a path in the slug would allow one.
+- `tag:topic/X` matches X and every topic under it, at any depth.
+  `cairn tags` counts the documents of the topics under a topic too.
+  Search follows the hierarchy downward only, so a document keeps its
+  most specific topics and a broad search still finds it.
+- A `topic/` tag without an about page is refused, so the list grows
+  only on purpose. A document keeps a topic it already holds when the
+  topic's page is hidden.
+- `cairn/vocab.lua` holds a starter list of 367 topics with labels,
+  broader topics, and scope notes, based on the Library of Congress
+  Subject Headings. `cairn topics seed` writes the missing ones as
+  about pages and never changes an existing page. The database is the
+  source of truth after that.
+- Names follow Z39.19: nouns, plural for countable things
+  (`compilers`), singular for disciplines and abstract ideas
+  (`security`), full forms over ambiguous abbreviations
+  (`cryptography`, not `crypto`).
+- A document has at most 6 topics.
+
+#### Forms
+
+The form says what kind of document something is. It is metadata
+(`dcterms.type`), not a tag: Z39.19 keeps form apart from subject.
+`cairn/vocab.lua` lists the forms. Names follow the CSL item types
+where CSL has the kind; cairn adds manual, specification, datasheet,
+schematic, and forms for notes (note, overview, howto, decision,
+design, snippet). An A/B test of the COAR resource types and the CSL
+item types showed that neither separates technical documents: COAR
+put most of them under "technical documentation" and CSL called every
+specification a "standard". A new note is form `note`; a form not on
+the list gets a hint, not a refusal.
 
 ### Links
 
@@ -522,7 +576,7 @@ RETURNING id, file, kind;
 | mime | kind | extractor |
 | --- | --- | --- |
 | text/markdown, text/plain | text | built in, inline in `put` |
-| application/pdf | pdf | `pdftotext -layout`, pages split on form feed |
+| application/pdf | pdf | `pdftotext -layout`, pages split on form feed; two-column pages from reading order |
 | application/pdf, no text layer | ocr | `pdftoppm` then `tesseract` |
 | image/png, image/jpeg | ocr | `tesseract` |
 | image/png, image/jpeg | vision | lgml, from `cairn experiments enrich` |
@@ -539,6 +593,15 @@ RETURNING id, file, kind;
 - Chunks follow pages, or markdown headings, and stay under about 2000
   tokens. A chunk keeps its heading path for context.
 - NUL bytes are removed before indexing. A NUL cuts off FTS content.
+- `pdftotext -layout` keeps tables readable but runs the columns of a
+  two-column page together, line by line. A page where most long
+  lines have one gap, lined up near the middle, is two columns of
+  prose; it comes from a second, reading-order pass. Tables have
+  several gaps a line and stay in layout.
+- Lines that sit at the edge of at least 3 pages and 30% of them are
+  running heads or feet and are removed, with bare page numbers.
+  Digits compare as equal, so "page 12" matches "page 13". Dot leaders
+  shrink to "...". Documents under 4 pages stay as they are.
 - When an extractor gets a new version, `cairn reindex` queues its
   files again.
 
@@ -572,13 +635,23 @@ CREATE VIRTUAL TABLE doc_fts USING fts5 (
   `instr(lower(body), ?)` for part words. On 46 MB of text the scan
   takes about 0.1 s. A trigram index did the same in under 0.01 s but
   cost 64 MB, a quarter of the file, so cairn does not keep one.
-- The query parser takes `tag:`, `mime:`, `author:`, and `since:`
-  filters out of the query. If the rest has no FTS5 operators, each
+- The query parser takes `tag:`, `mime:`, `author:`, `since:`,
+  `date:`, `creator:`, `type:`, and `meta:` filters out of the query. If the rest has no FTS5 operators, each
   word is quoted and the last word gets a prefix match. A query with
   FTS5 operators goes to MATCH unchanged.
 - A document whose extraction is not done shows `text: pending` in
   search and get results, so a caller knows why a body match is
   missing.
+- Search leaves out hidden documents, superseded documents, and the
+  about pages of tags, unless asked.
+- `search -l` prints ids only, with no limit; `-q` prints nothing.
+  Search exits 1 when nothing matches, so it works in shell tests
+  and pipes. `get`, `related`, `hide`, and `unhide` read ids from
+  standard input when the id is `-`.
+- `get` and `related` list up to 5 similar documents from the stored
+  embeddings (cairn experiments similar) above a score, 0.5 by
+  default, and leave out documents already linked either way.
+- `get` takes a page range: `cairn:ID#p=12-15`.
 
 ## Settings
 
@@ -734,7 +807,11 @@ call a model.
 | experiment | does |
 | --- | --- |
 | `enrich [--kind vision\|transcript] [--model m] [--max n]` | queues vision jobs for PNG and JPEG files and transcript jobs for audio, then runs them through lgml |
-| `meta [ID...] [--apply] [--model m]` | asks jev (lgml systemone) for each document's year, type, and language, and whether its creator name is real; a dry run unless `--apply`, which writes answers at 0.8 or above into empty `dcterms` fields only, with `jev.model` and `jev.checked` |
+| `meta [ID...] [--apply] [--model m]` | asks jev (lgml systemone) for each document's year, form, and language, and whether its creator name is real; a dry run unless `--apply`, which writes answers at 0.8 or above into empty `dcterms` fields only, with `jev.model` and `jev.checked` |
+| `form [ID... \| --all] [--apply]` | picks each document's form from the list in `cairn/vocab.lua` with one chat call; keeps a form a person set; `--apply` writes `dcterms.type` with `gen.type` and drops form tags |
+| `topics [ID... \| --all] [--apply]` | picks each document's topics by walking down the topic hierarchy (see below) |
+| `similar [--top n] [--force]` | embeds each document once, as the mean of up to 48 of its chunks, and stores its nearest documents as rows |
+| `expand ID... \| --all` | writes search terms and questions per chunk and indexes them |
 
 The experiments call lgml through lgml-client, which is optional: cairn
 installs and runs without it, and `cairn check` says whether it is
@@ -743,10 +820,19 @@ fields, and the first pages, plus "none". The language question reads
 a passage a third of the way into the document, since covers and
 front matter are often in another language.
 
-Planned: document expansion
-(search terms written per chunk and indexed), and similar documents
-from embeddings computed in one pass and stored as rows. Each stores
-its results in the database, so searching needs no model.
+Each experiment stores its results in the database, so searching needs
+no model.
+
+The topics classifier offers the top topics first, then at each level
+the topics under the ones just chosen, so each call sees 20 to 40
+choices with their scope notes instead of the whole list. The first
+step down must pick one; later steps may pick none. The most specific
+picks become the tags; past 6, leaves that share a broader topic below
+the top give way to it. Before the choices, the model names 1 to 3
+subjects in its own words; those not in the list are printed as
+suggestions and never written. A new topic exists only when someone
+writes its about page. The document text comes first in each prompt,
+so the calls for one document share a prefix that lgml can reuse.
 
 ## Garbage collection
 
