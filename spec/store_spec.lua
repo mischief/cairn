@@ -206,3 +206,18 @@ describe("search chunks", function()
 		d:close()
 	end)
 end)
+
+describe("search input", function()
+	it("reads bad FTS5 input as words and lists tags by start", function()
+		local d = assert(db.open(":memory:"))
+
+		store.note(d, { title = "m5 notes", body = "cardputer", author = "k",
+		    tags = { "m5stack", "abi" } })
+		assert.equal(1, #search.search(d, "*"))
+		assert.equal(1, #search.search(d, "* cardputer"))
+		assert.equal(1, #search.search(d, '"cardputer'))
+		assert.equal("m5stack", search.tags(d, "m")[1].name)
+		assert.equal("abi", search.tags(d, "a")[1].name)
+		d:close()
+	end)
+end)

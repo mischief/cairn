@@ -74,8 +74,8 @@ function M.hasops(s)
 end
 
 -- fts(s) -> FTS5 query: each word quoted, a prefix match on the last
-function M.fts(s)
-	if M.hasops(s) then
+function M.fts(s, plain)
+	if not plain and M.hasops(s) then
 		return s
 	end
 
@@ -236,6 +236,13 @@ function M.search(d, q, opts)
 
 	local match = M.fts(text)
 
+	-- FTS5 refuses some input, such as a lone "*"; read it as plain
+	-- words then, and list documents when no word is left
+	if match and not pcall(d.rows, d, "SELECT 1 FROM doc_fts "
+	    .. "WHERE doc_fts MATCH ? LIMIT 1", { match }) then
+		match = M.fts(text, true)
+	end
+
 	if match then
 		for _, r in ipairs(d:rows("SELECT d.*, bm25(doc_fts, 10.0, 5.0) AS s "
 		    .. "FROM doc_fts JOIN doc d ON d.n = doc_fts.rowid "
@@ -316,13 +323,13 @@ local RTAG = "(SELECT t.doc, coalesce(a.name, t.name) AS name FROM tag t "
     .. "JOIN doc d ON d.id = t.doc "
     .. "WHERE d.hidden = 0 AND d.superseded_by IS NULL)"
 
--- tags(d, prefix) -> list of { name, count, with = {...}, about }.
--- A nested name also lists its parents, with the count of documents
--- under each.
+-- tags(d, prefix) -> list of { name, count, with = {...}, about } for
+-- the tags that start with prefix. A nested name also lists its
+-- parents, with the count of documents under each.
 function M.tags(d, prefix)
 	local rows = d:rows("SELECT name, count(DISTINCT doc) AS count FROM "
-	    .. RTAG .. " WHERE (? IS NULL OR name = ? OR name LIKE ? || '/%') "
-	    .. "GROUP BY name ORDER BY name", { prefix, prefix, prefix, n = 3 })
+	    .. RTAG .. " WHERE (? IS NULL OR name LIKE ? || '%') "
+	    .. "GROUP BY name ORDER BY name", { prefix, prefix, n = 2 })
 	local byname = {}
 
 	for _, r in ipairs(rows) do

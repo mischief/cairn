@@ -466,6 +466,13 @@ function M.register(srv, t, d)
 	local run = t.run
 
 	t.run = function(a, ctx)
+		-- some clients send "" for an argument they leave out
+		for k, v in pairs(a) do
+			if v == "" then
+				a[k] = nil
+			end
+		end
+
 		local ok, res, err = pcall(run, a, ctx)
 
 		if not ok then
