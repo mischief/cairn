@@ -139,8 +139,9 @@ function M.tools(d, path, author)
 		    .. "links (each marked when its target changed since it was "
 		    .. "linked), and one page of text (4000 characters by default). "
 		    .. "id takes an id, a CID, or a cairn: URI; @REV picks a "
-		    .. "version, #p=N one PDF page, #text the sections whose "
-		    .. "heading holds text. Page through long text with page.",
+		    .. "version, #p=N one PDF page, #p=N-M a range of pages, "
+		    .. "#text the sections whose heading holds text. Page "
+		    .. "through long text with page.",
 		args = {
 			id = mcptk.str{ desc = "id, CID, or cairn:ID[@REV][#p=N]" },
 			rev = mcptk.int{ optional = true, min = 1 },

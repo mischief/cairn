@@ -337,10 +337,15 @@ local function keep(ch, frag)
 		return true
 	end
 
-	local p = math.tointeger(tonumber(frag:match("^p=(%d+)$")))
+	local a, b = frag:match("^p=(%d+)$")
 
-	if p then
-		return ch.page == p
+	if not a then
+		a, b = frag:match("^p=(%d+)%-(%d+)$")
+	end
+	if a then
+		a = math.tointeger(tonumber(a))
+		b = math.tointeger(tonumber(b)) or a
+		return ch.page ~= nil and ch.page >= a and ch.page <= b
 	end
 	return ch.heading ~= nil
 	    and ch.heading:lower():find(frag:lower(), 1, true) ~= nil
@@ -522,8 +527,8 @@ local function showdoc(v, allmeta)
 		l[#l + 1] = ("\n%s\n"):format(v.text)
 		if v.pages > 1 then
 			l[#l + 1] = ("\n[page %d of %d; ask for page %d for more, or "
-			    .. "at p=N for one PDF page]\n"):format(v.page, v.pages,
-			    math.min(v.page + 1, v.pages))
+			    .. "at p=N or p=N-M for PDF pages]\n"):format(v.page,
+			    v.pages, math.min(v.page + 1, v.pages))
 		end
 	end
 	return table.concat(l)
