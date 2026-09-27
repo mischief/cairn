@@ -260,6 +260,29 @@ CREATE TABLE state (
 ) WITHOUT ROWID;
 ]]
 
+-- results of cairn experiments similar: one vector per document (the
+-- mean of its chunk vectors), and the nearest documents to each
+M.migrations[8] = [[
+CREATE TABLE docvec (
+	doc TEXT PRIMARY KEY REFERENCES doc (id),
+	file INTEGER,
+	model TEXT NOT NULL,
+	dims INTEGER NOT NULL,
+	chunks INTEGER NOT NULL,
+	created TEXT NOT NULL,
+	v BLOB NOT NULL
+) WITHOUT ROWID;
+
+CREATE TABLE similar (
+	doc TEXT NOT NULL REFERENCES doc (id),
+	other TEXT NOT NULL REFERENCES doc (id),
+	score REAL NOT NULL,
+	model TEXT NOT NULL,
+	PRIMARY KEY (doc, other)
+) WITHOUT ROWID;
+CREATE INDEX similar_other ON similar (other);
+]]
+
 M.VERSION = #M.migrations
 
 return M

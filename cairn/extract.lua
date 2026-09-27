@@ -129,24 +129,16 @@ function M.ocr(data, mime, opts)
 	end)
 end
 
-local function post(path, body, opts)
-	local url = assert(opts.url, "no lgml url")
-
-	return with(body, "application/json", function(bodypath)
-		return run({ "curl", "-sS", "--fail-with-body", "-m", "900",
-		    "-H", "content-type: application/json",
-		    "--data-binary", "@" .. bodypath, url .. path }, opts)
-	end)
-end
-
 -- vision(data, mime, opts) -> chunks with an image description
 function M.vision(data, mime, opts)
 	if mime ~= "image/png" and mime ~= "image/jpeg" then
 		error("vision takes png or jpeg, not " .. tostring(mime), 0)
 	end
 
-	local json = require "mcptk.json"
-	local body = json.encode({
+	local lgml = require "cairn.lgml"
+	local c = lgml.client(nil, { url = assert(opts.url, "no lgml url"),
+	    tick = opts.tick, tick_every = opts.every })
+	local ok, text = pcall(lgml.chat, c, {
 		model = assert(opts.model, "no lgml model"),
 		max_tokens = 600,
 		chat_template_kwargs = { enable_thinking = false },
@@ -159,11 +151,12 @@ function M.vision(data, mime, opts)
 			},
 		} },
 	})
-	local res = json.decode(post("/v1/chat/completions", body, opts))
-	local text = res.choices and res.choices[1] and res.choices[1].message
-	    and res.choices[1].message.content
 
-	if type(text) ~= "string" or text == "" then
+	c:close()
+	if not ok then
+		error(text, 0)
+	end
+	if text == "" then
 		error("lgml gave no description", 0)
 	end
 	return chunk.plain(text)

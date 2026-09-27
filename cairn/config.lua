@@ -10,6 +10,11 @@ M.KEYS = {
 	    desc = "lgml server for image descriptions and transcripts" },
 	["lgml.model"] = { env = "CAIRN_MODEL", default = "gemma-4-26b",
 	    desc = "lgml model for image descriptions" },
+	["lgml.decide"] = { env = "CAIRN_DECIDE_MODEL", default = "gemma-4-26b",
+	    desc = "lgml model for systemone (jev) decisions and text passes" },
+	["lgml.embed"] = { env = "CAIRN_EMBED_MODEL",
+	    default = "qwen3-embedding-4b",
+	    desc = "lgml model for embeddings (cairn experiments similar)" },
 	["mcp.write"] = { env = "CAIRN_MCP_WRITE", default = "0",
 	    desc = "1 gives cairn mcp its write tools: put, edit, tag, meta, "
 	    .. "link, attach",

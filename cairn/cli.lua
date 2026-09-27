@@ -1110,6 +1110,10 @@ function C.check(p, d, path)
 		    .. (extract.PACKAGE[t] or t) .. ")"), "for " .. join(seen[t]))
 	end
 
+	say("%-9s %s", "client", require("cairn.lgml").available()
+	    and "lgml-client installed (cairn experiments uses it)"
+	    or "lgml-client missing; cairn experiments needs it")
+
 	local url = cfg.get(d, "lgml.url")
 	local ok, out, code = pcall(require("cairn.proc").run,
 	    { "curl", "-sS", "-m", "3", "-o", "/dev/null", "-w", "%{http_code}",

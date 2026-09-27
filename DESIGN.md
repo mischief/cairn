@@ -596,6 +596,7 @@ CREATE TABLE config (
 | lgml.url | CAIRN_LGML | http://127.0.0.1:8091 |
 | lgml.model | CAIRN_MODEL | gemma-4-26b |
 | mcp.write | CAIRN_MCP_WRITE | 0 |
+| lgml.decide | CAIRN_DECIDE_MODEL | gemma-4-26b |
 | gc.auto | CAIRN_GC_AUTO | 1000 |
 | limit.daily | CAIRN_DAILY_BYTES | 268435456 |
 
@@ -733,8 +734,16 @@ call a model.
 | experiment | does |
 | --- | --- |
 | `enrich [--kind vision\|transcript] [--model m] [--max n]` | queues vision jobs for PNG and JPEG files and transcript jobs for audio, then runs them through lgml |
+| `meta [ID...] [--apply] [--model m]` | asks jev (lgml systemone) for each document's year, type, and language, and whether its creator name is real; a dry run unless `--apply`, which writes answers at 0.8 or above into empty `dcterms` fields only, with `jev.model` and `jev.checked` |
 
-Planned: metadata guesses with jev (systemone), document expansion
+The experiments call lgml through lgml-client, which is optional: cairn
+installs and runs without it, and `cairn check` says whether it is
+there. The year question offers only years found in the title, the PDF
+fields, and the first pages, plus "none". The language question reads
+a passage a third of the way into the document, since covers and
+front matter are often in another language.
+
+Planned: document expansion
 (search terms written per chunk and indexed), and similar documents
 from embeddings computed in one pass and stored as rows. Each stores
 its results in the database, so searching needs no model.
