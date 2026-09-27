@@ -237,3 +237,11 @@ describe("plain text with form feeds", function()
 		d:close()
 	end)
 end)
+
+describe("markdown headings", function()
+	it("leaves skipped levels out of the heading path", function()
+		local ch = chunk.markdown("# walk(5)\n\n### NAME\n\nwalk - descend\n")
+
+		assert.equal("walk(5) > NAME", ch[1].heading)
+	end)
+end)

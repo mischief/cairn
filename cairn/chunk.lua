@@ -91,7 +91,15 @@ function M.markdown(s)
 			for i = 1, #hashes do
 				path[i] = path[i] or ""
 			end
-			heading = table.concat(path, " > "):gsub("^[ >]+", "")
+			-- a skipped heading level leaves an empty part; leave it out
+			local parts = {}
+
+			for i = 1, #hashes do
+				if path[i] ~= "" then
+					parts[#parts + 1] = path[i]
+				end
+			end
+			heading = table.concat(parts, " > ")
 		else
 			body[#body + 1] = line
 		end
