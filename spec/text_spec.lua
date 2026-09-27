@@ -95,3 +95,24 @@ describe("scope notes", function()
 		d:close()
 	end)
 end)
+
+describe("about pages in search", function()
+	it("leaves them out unless asked for", function()
+		local search = require "cairn.search"
+		local d = assert(db.open(":memory:"))
+		local page = store.note(d, { title = "Computer security",
+		    body = "threats and defenses", author = "k",
+		    about = "topic/security" })
+		local doc = store.note(d, { title = "Tor", body = "defenses against "
+		    .. "traffic analysis", author = "k" })
+
+		local hits = search.search(d, "defenses")
+
+		assert.equal(1, #hits)
+		assert.equal(doc, hits[1].id)
+		hits = search.search(d, "defenses", { about = true })
+		assert.equal(1, #hits)
+		assert.equal(page, hits[1].id)
+		d:close()
+	end)
+end)

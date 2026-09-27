@@ -170,7 +170,7 @@ env: CAIRN_DB (default $XDG_DATA_HOME/cairn/cairn.db), CAIRN_AUTHOR
 local LISTS = { t = "t", tag = "t", set = "set" }
 local FLAGS = { json = true, all = true, remove = true,
     ["from-file"] = true, ["dry-run"] = true, docs = true, meta = true,
-    apply = true, force = true, hidden = true,
+    apply = true, force = true, hidden = true, ["about-pages"] = true,
     unset = true,
     ["retry-failed"] = true, help = true, h = true }
 
@@ -808,7 +808,7 @@ end
 
 M.SEARCHHELP = [=[
 usage: cairn search QUERY [--limit n] [--offset n] [--chunks n] [--all]
-                   [--hidden]
+                   [--hidden] [--about-pages]
                    [-t tag]... [--json]
 
 QUERY is words, matched as words and word starts in titles, tags, and
@@ -823,6 +823,8 @@ NEAR, *) passes through. Filters go in the query:
   meta:KEY  meta:KEY=VALUE  meta:KEY~PART
 --hidden searches only hidden documents (cairn hide), so they can be
 found again and unhidden: cairn search --hidden '*'.
+--about-pages searches only the about pages of tags (put --about);
+other searches leave them out. cairn tags shows their scope notes.
 --all includes superseded documents. --chunks sets the passages shown
 per document (3). A query of filters alone lists the newest documents.
 Examples:
@@ -840,6 +842,7 @@ function C.search(p, d)
 	end
 	local hits, total = search.search(d, q, { tag = p.opts.t,
 	    superseded = p.opts.all, hidden = p.opts.hidden,
+	    about = p.opts["about-pages"],
 	    limit = math.tointeger(tonumber(p.opts.limit)),
 	    offset = math.tointeger(tonumber(p.opts.offset)),
 	    chunks = math.tointeger(tonumber(p.opts.chunks)) })
@@ -1221,6 +1224,8 @@ function C.stats(p, d)
 		chunks = d:row("SELECT count(*) FROM chunk"),
 		pending = d:row("SELECT count(*) FROM job WHERE status = 'pending'"),
 		hidden = d:row("SELECT count(*) FROM doc WHERE hidden = 1"),
+		about = d:row("SELECT count(*) FROM doc WHERE about IS NOT NULL "
+		    .. "AND hidden = 0 AND superseded_by IS NULL"),
 		writes = tonumber((d:row("SELECT value FROM state "
 		    .. "WHERE key = 'gc.writes'"))) or 0,
 		free = d:row("PRAGMA freelist_count") * d:row("PRAGMA page_size"),
@@ -1228,7 +1233,8 @@ function C.stats(p, d)
 
 	out(p.opts, s, function(v)
 		local keys = { "docs", "versions", "files", "blocks", "bytes", "tags",
-		    "links", "chunks", "pending", "hidden", "writes", "free" }
+		    "links", "chunks", "pending", "hidden", "about", "writes",
+		    "free" }
 		local l = {}
 
 		for _, k in ipairs(keys) do

@@ -437,12 +437,14 @@ GROUP BY d.id ORDER BY depth, d.updated DESC LIMIT 100
 ]], { id, depth or 1, rel, rel, id, n = 5 })
 end
 
--- recent(d, since, author, limit) -> recent versions
+-- recent(d, since, author, limit) -> recent versions, without the about
+-- pages of tags
 function M.recent(d, since, author, limit)
 	return d:rows("SELECT v.doc AS id, v.rev, v.author, v.created, d.title "
 	    .. "FROM doc_version v JOIN doc d ON d.id = v.doc "
 	    .. "WHERE (? IS NULL OR v.created >= ?) "
 	    .. "AND (? IS NULL OR v.author = ?) AND d.hidden = 0 "
+	    .. "AND d.about IS NULL "
 	    .. "ORDER BY v.created DESC, v.rev DESC LIMIT ?",
 	    { since, since, author, author, math.min(limit or 20, 200), n = 5 })
 end

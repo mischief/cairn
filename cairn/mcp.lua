@@ -124,6 +124,9 @@ function M.tools(d, path, author)
 			    desc = "include superseded documents" },
 			hidden = mcptk.bool{ default = false,
 			    desc = "search only hidden documents" },
+			about_pages = mcptk.bool{ default = false,
+			    desc = "search only the about pages of tags, which "
+			    .. "other searches leave out" },
 			limit = mcptk.int{ default = 10, min = 1, max = 50 },
 			chunks = mcptk.int{ default = 3, min = 1, max = 10,
 			    desc = "matching passages to return per document" },
@@ -132,7 +135,7 @@ function M.tools(d, path, author)
 		run = function(a)
 			local hits, total = search.search(d, a.query, { tag = a.tags,
 			    superseded = a.superseded, hidden = a.hidden,
-			    limit = a.limit,
+			    about = a.about_pages, limit = a.limit,
 			    offset = a.offset, chunks = a.chunks })
 
 			return data(R.hits({ hits = hits, total = total }))
