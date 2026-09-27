@@ -10,9 +10,6 @@ M.KEYS = {
 	    desc = "lgml server for image descriptions and transcripts" },
 	["lgml.model"] = { env = "CAIRN_MODEL", default = "gemma-4-26b",
 	    desc = "lgml model for image descriptions" },
-	["enrich.vision"] = { env = "CAIRN_VISION", default = "0",
-	    desc = "1 lets an enricher started by cairn mcp use lgml",
-	    check = "^[01]$" },
 	["mcp.write"] = { env = "CAIRN_MCP_WRITE", default = "0",
 	    desc = "1 gives cairn mcp its write tools: put, edit, tag, meta, "
 	    .. "link, attach",

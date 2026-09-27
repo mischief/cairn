@@ -11,7 +11,8 @@ DESIGN.md describes the data model and the decisions behind it.
 
     cairn init
     printf '# uart\n115200 baud on PA9\n' | cairn put "STM32 wiring" -t stm32
-    cairn attach datasheet.pdf -t stm32 -t datasheet
+    cairn attach datasheet.pdf -t stm32 -t datasheet --set dcterms.date=2021
+    cairn check                   # which extractors are installed
     cairn enrich                  # extract text; run it in the background
     cairn search "baud tag:stm32"
     cairn get <id>
@@ -29,12 +30,13 @@ then the MCP client name, then `$USER`.
 
 Settings live in the database: `cairn config` lists them,
 `cairn config lgml.model gemma-4-26b` sets one, and an environment
-variable (`CAIRN_LGML`, `CAIRN_MODEL`, `CAIRN_VISION`,
-`CAIRN_DAILY_BYTES`) overrides one for a single run.
+variable (`CAIRN_LGML`, `CAIRN_MODEL`, `CAIRN_MCP_WRITE`,
+`CAIRN_GC_AUTO`, `CAIRN_DAILY_BYTES`) overrides one for a single run.
 
-`cairn enrich --vision` also describes images and transcribes audio
-through a local lgml server. That loads a model on the GPU, so it only
-runs when asked.
+Features that use a language model, such as image descriptions and
+audio transcripts through a local lgml server, live under
+`cairn experiments`; run it alone to list them. They load models on
+the GPU, so they only run when asked.
 
 ## MCP
 
@@ -49,7 +51,6 @@ Documents carry metadata as `namespace.name` keys, mostly DCMI Terms:
 `cairn meta ID dcterms.date=1985-12-26 dcterms.creator='DoD NCSC'`.
 Search filters on it: `date:<1990`, `creator:intel`,
 `meta:KEY=VALUE`.
-`cairn config enrich.vision 1` lets that enricher use lgml.
 
 ## Requirements
 

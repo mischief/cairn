@@ -41,6 +41,7 @@ build = {
     ['cairn.derive'] = 'cairn/derive.lua',
     ['cairn.drisl'] = 'cairn/drisl.lua',
     ['cairn.enrich'] = 'cairn/enrich.lua',
+    ['cairn.experiments'] = 'cairn/experiments.lua',
     ['cairn.extract'] = 'cairn/extract.lua',
     ['cairn.mcp'] = 'cairn/mcp.lua',
     ['cairn.meta'] = 'cairn/meta.lua',

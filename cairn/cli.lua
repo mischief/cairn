@@ -77,10 +77,15 @@ METADATA:
   cairn meta ID --from-file reads a stored PDF again. Any other
   namespace is free for your own keys.
 
-ADD A FILE (pdf, image, audio, html, office, text):
-  CAIRN_AUTHOR=NICK cairn attach FILE --title 'TITLE' -t TAG
+ADD A FILE (pdf, image, html, office, text):
+  CAIRN_AUTHOR=NICK cairn attach FILE --title 'TITLE' -t TAG \
+      --set dcterms.date=2024 --set dcterms.creator='RISC-V International'
   Then run `cairn enrich` as a background command. The file text is
   searchable when it exits. Text and markdown files need no enrich.
+  Read what attach prints. A "warning:" line names an extractor that
+  is not installed; the job waits, and runs at the next cairn enrich
+  after the tool is installed. A "hint:" line names metadata to add.
+  cairn check shows which extractors are installed.
 
 WHAT TO WRITE:
   - Facts, decisions and why, pitfalls, how parts fit together: what
@@ -98,10 +103,14 @@ M.USAGE = [==[
 usage: cairn [-d db] [--json] command [args]
 
   init                              make an empty database
-  put <title> [-t tag]... [file|-]  write a markdown note
+  put <title> [-t tag]... [--set k=v]... [file|-]
+                                    write a markdown note
   edit <id> <rev> [file|-]          new version of a note
-  attach <file> [-t tag]... [--title t]  store a file, queue extraction
-  enrich [--vision] [--model m] [--max n] [--retry-failed]
+  attach <file> [-t tag]... [--title t] [--set k=v]...
+                                    store a file, queue extraction
+  check                             which extractors are installed, and
+                                    the state of the database and queue
+  enrich [--max n] [--retry-failed]
                                     drain the extraction queue
   search <query> [--all] [--limit n] [--chunks n]
                                     search; tag: mime: author: since:
@@ -130,24 +139,27 @@ usage: cairn [-d db] [--json] command [args]
                                     history stays
   stats                             counts and sizes
   config [key [value]] [--unset]    show or set a setting
+  experiments                       features that use a language model;
+                                    run it alone to list them
   mcp                               serve MCP tools over stdio
 
 rels: see-also cites supersedes contradicts
 settings live in the database (cairn config); env overrides them:
-  CAIRN_LGML, CAIRN_MODEL, CAIRN_VISION, CAIRN_DAILY_BYTES
+  CAIRN_LGML, CAIRN_MODEL, CAIRN_MCP_WRITE, CAIRN_GC_AUTO, CAIRN_DAILY_BYTES
 env: CAIRN_DB (default $XDG_DATA_HOME/cairn/cairn.db), CAIRN_AUTHOR
 ]==]
 
 -- parse(argv) -> { cmd, args = {...}, opts = {...} }. Repeatable
 -- options collect into lists.
-local LISTS = { t = true, tag = true }
-local FLAGS = { json = true, vision = true, all = true, remove = true,
+-- options that repeat, and the list each goes into
+local LISTS = { t = "t", tag = "t", set = "set" }
+local FLAGS = { json = true, all = true, remove = true,
     ["from-file"] = true, ["dry-run"] = true, docs = true, meta = true,
     unset = true,
     ["retry-failed"] = true, help = true, h = true }
 
 function M.parse(argv)
-	local p = { args = {}, opts = { t = {} } }
+	local p = { args = {}, opts = { t = {}, set = {} } }
 	local i = 1
 
 	while i <= #argv do
@@ -163,7 +175,7 @@ function M.parse(argv)
 					error("option " .. a .. " needs a value", 0)
 				end
 				if LISTS[key] then
-					local l = p.opts.t
+					local l = p.opts[LISTS[key]]
 
 					l[#l + 1] = argv[i]
 				else
@@ -202,31 +214,38 @@ end
 -- command() -> how a shell reaches cairn: "cairn" when it is on PATH,
 -- else the full path of a known install
 function M.command()
+	if util.which("cairn") then
+		return "cairn"
+	end
+
 	local stat = require "posix.sys.stat"
-	local unistd = require "posix.unistd"
-
-	local function access(p)
-		local st = stat.stat(p)
-
-		return st and stat.S_ISREG(st.st_mode) ~= 0
-		    and unistd.access(p, "x") == 0
-	end
-
-	for dir in (os.getenv("PATH") or ""):gmatch("[^:]+") do
-		if dir:sub(1, 1) == "/" and access(dir .. "/cairn") then
-			return "cairn"
-		end
-	end
-
 	local home = os.getenv("HOME") or ""
 
 	for _, p in ipairs({ home .. "/.luarocks/bin/cairn",
 	    home .. "/.local/bin/cairn", "/usr/local/bin/cairn" }) do
-		if access(p) then
+		local st = stat.stat(p)
+
+		if st and stat.S_ISREG(st.st_mode) ~= 0 then
 			return p
 		end
 	end
 	return "cairn"
+end
+
+-- warnings(kinds, mime) -> lines about missing tools for queued jobs
+function M.warnings(kinds, mime)
+	local extract = require "cairn.extract"
+	local out = {}
+
+	for _, k in ipairs(kinds) do
+		for _, t in ipairs(extract.missing(k, mime)) do
+			out[#out + 1] = ("warning: %s is not installed (package %s); "
+			    .. "the text of this file stays unsearchable until it is "
+			    .. "installed and cairn enrich runs"):format(t,
+			    extract.PACKAGE[t] or t)
+		end
+	end
+	return out
 end
 
 function M.author(client)
@@ -653,7 +672,9 @@ function C.put(p, d)
 	local title = p.args[1] or error("put needs a title", 0)
 	local body = readinput(p.args[2])
 	local id, rev, c, dups, close, wanted, fills = store.note(d, {
-	    title = title, body = body, tags = p.opts.t, author = M.author() })
+	    title = title, body = body, tags = p.opts.t, author = M.author(),
+	    meta = #p.opts.set > 0 and require("cairn.meta").apply({}, p.opts.set)
+	    or nil })
 
 	out(p.opts, { id = id, rev = rev, cid = cid.tostring(c),
 	    uri = store.uri(id), similar = dups, close_tags = close,
@@ -683,16 +704,40 @@ function C.attach(p, d)
 	local path = p.args[1] or error("attach needs a file", 0)
 	local data = assert(util.readfile(path))
 	local name = path:match("([^/]+)$")
+	local mime = p.opts.mime or util.mimeof(name, path)
 	local id, rev, fc, kinds = store.attach(d, { data = data, name = name,
-	    mime = p.opts.mime or util.mimeof(name, path),
-	    title = p.opts.title, tags = p.opts.t, author = M.author() })
+	    mime = mime, title = p.opts.title, tags = p.opts.t,
+	    meta = require("cairn.meta").apply({}, p.opts.set),
+	    author = M.author() })
 
-	out(p.opts, { id = id, rev = rev, uri = store.uri(id),
-	    file = cid.tostring(fc), jobs = kinds },
-	    function(v)
-		return ("%s rev %d file %s%s\n"):format(v.uri, v.rev, v.file,
-		    #v.jobs > 0 and ("  queued: " .. join(v.jobs)) or "")
-	end)
+	out(p.opts, M.attached(d, id, rev, fc, kinds, mime), R.attached)
+end
+
+-- attached(...) -> the result of an attach, with warnings and hints
+function M.attached(d, id, rev, fc, kinds, mime)
+	local v = { id = id, rev = rev, uri = store.uri(id),
+	    file = cid.tostring(fc), jobs = kinds,
+	    warnings = M.warnings(kinds, mime) }
+	local m = store.current(d, id).meta
+
+	if not m["dcterms.date"] and mime ~= "text/markdown" then
+		v.hint = ("no date found: cairn meta %s dcterms.date=YYYY "
+		    .. "(or attach --set dcterms.date=YYYY)"):format(id)
+	end
+	return v
+end
+
+function R.attached(v)
+	local s = { ("%s rev %d file %s%s\n"):format(v.uri, v.rev, v.file,
+	    #v.jobs > 0 and ("  queued: " .. join(v.jobs)) or "") }
+
+	for _, w in ipairs(v.warnings or {}) do
+		s[#s + 1] = w .. "\n"
+	end
+	if v.hint then
+		s[#s + 1] = "hint: " .. v.hint .. "\n"
+	end
+	return table.concat(s)
 end
 
 function C.enrich(p, d, path)
@@ -709,8 +754,8 @@ function C.enrich(p, d, path)
 		return
 	end
 
-	local n = enrich.run(d, { vision = p.opts.vision, model = p.opts.model,
-	    max = math.tointeger(tonumber(p.opts.max)) }, function(s)
+	local n = enrich.run(d, { max = math.tointeger(tonumber(p.opts.max)) },
+	    function(s)
 		io.stderr:write(s, "\n")
 	end)
 
@@ -985,6 +1030,64 @@ function C.backup(p, d)
 	print("wrote " .. path)
 end
 
+function C.check(p, d, path)
+	local extract = require "cairn.extract"
+	local schema = require "cairn.schema"
+	local cfg = require "cairn.config"
+	local lines = {}
+
+	local function say(fmt, ...)
+		lines[#lines + 1] = fmt:format(...)
+	end
+
+	say("database %s (schema %d of %d)", path, d:row("PRAGMA user_version"),
+	    schema.VERSION)
+	say("hashing  %s", require("cairn.sha256").native and "luaossl"
+	    or "pure Lua (install luaossl for speed)")
+
+	local seen = {}
+
+	for _, kind in ipairs({ "pdf", "ocr", "pandoc", "vision", "transcript" }) do
+		for _, t in ipairs(extract.TOOLS[kind]) do
+			seen[t] = seen[t] or {}
+			seen[t][#seen[t] + 1] = kind
+		end
+	end
+	seen.pdftoppm = { "ocr of pdf" }
+
+	local names = {}
+
+	for t in pairs(seen) do
+		names[#names + 1] = t
+	end
+	table.sort(names)
+	for _, t in ipairs(names) do
+		local where = util.which(t)
+
+		say("%-9s %-40s %s", t, where or ("missing (package "
+		    .. (extract.PACKAGE[t] or t) .. ")"), "for " .. join(seen[t]))
+	end
+
+	local url = cfg.get(d, "lgml.url")
+	local ok, out, code = pcall(require("cairn.proc").run,
+	    { "curl", "-sS", "-m", "3", "-o", "/dev/null", "-w", "%{http_code}",
+	    url .. "/v1/models" })
+
+	say("lgml      %s %s (only cairn experiments uses it)", url,
+	    ok and code == 0 and out == "200" and "answers"
+	    or "does not answer")
+
+	for _, r in ipairs(queue.status(d)) do
+		say("queue     %-10s %-8s %d", r.kind, r.status, r.count)
+	end
+	for _, r in ipairs(d:rows("SELECT kind, error, count(*) AS n FROM job "
+	    .. "WHERE status = 'pending' AND error LIKE '%is not installed%' "
+	    .. "GROUP BY kind, error")) do
+		say("waiting   %d %s jobs: %s", r.n, r.kind, r.error)
+	end
+	print(table.concat(lines, "\n"))
+end
+
 function C.gc(p, d)
 	local blocks, bytes, cids = store.gc(d, p.opts["dry-run"])
 
@@ -1057,6 +1160,11 @@ function C.config(p, d)
 		end
 		return table.concat(s)
 	end)
+end
+
+-- experiments: hidden; see cairn/experiments.lua
+function C.experiments(p, d, path)
+	require("cairn.experiments").main(p, d, path)
 end
 
 function C.mcp(p, d, path)

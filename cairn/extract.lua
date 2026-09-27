@@ -10,6 +10,39 @@ local M = {}
 
 M.VERSION = { pdf = 1, ocr = 1, vision = 1, transcript = 1, pandoc = 1 }
 
+-- commands each kind of job runs; ocr of a pdf also needs pdftoppm
+M.TOOLS = {
+	pdf = { "pdftotext" },
+	ocr = { "tesseract" },
+	pandoc = { "pandoc" },
+	vision = { "curl" },
+	transcript = { "ffmpeg", "curl" },
+}
+
+-- what each tool comes in, for hints
+M.PACKAGE = { pdftotext = "poppler", pdftoppm = "poppler",
+    tesseract = "tesseract", pandoc = "pandoc", ffmpeg = "ffmpeg",
+    curl = "curl" }
+
+-- missing(kind, mime) -> list of commands the kind needs that are not on
+-- PATH
+function M.missing(kind, mime)
+	local need = { table.unpack(M.TOOLS[kind] or {}) }
+
+	if kind == "ocr" and mime == "application/pdf" then
+		need[#need + 1] = "pdftoppm"
+	end
+
+	local out = {}
+
+	for _, t in ipairs(need) do
+		if not util.which(t) then
+			out[#out + 1] = t
+		end
+	end
+	return out
+end
+
 M.PROMPT = "Describe this image for a search index. Name the objects, "
     .. "any text you can read, diagrams, labels, and the kind of image. "
     .. "Plain text, no preamble."

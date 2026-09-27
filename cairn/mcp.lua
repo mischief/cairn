@@ -76,9 +76,7 @@ local function spawn_enrich(d, path)
 		argv[#argv + 1] = a
 	end
 
-	if require("cairn.config").get(d, "enrich.vision") == "1" then
-		argv[#argv + 1] = "--vision"
-	end
+
 	require("cairn.proc").spawn(argv)
 end
 
@@ -382,8 +380,20 @@ function M.tools(d, path, author)
 			path = mcptk.str{ desc = "absolute path of a readable file" },
 			title = mcptk.str{ optional = true },
 			tags = mcptk.arr{ of = mcptk.str, optional = true, max = 32 },
+			meta = mcptk.any{ optional = true, desc = "metadata to set, "
+			    .. "key -> string or list, such as {\"dcterms.date\": "
+			    .. "\"2024\"}" },
 		},
 		run = function(a)
+			if a.meta ~= nil and type(a.meta) ~= "table" then
+				return nil, "meta must be an object"
+			end
+			for k, v in pairs(a.meta or {}) do
+				if v == mcptk.null then
+					a.meta[k] = nil
+				end
+			end
+
 			local data, err = util.readfile(a.path)
 
 			if not data then
@@ -391,16 +401,15 @@ function M.tools(d, path, author)
 			end
 
 			local name = a.path:match("([^/]+)$")
+			local mime = util.mimeof(name, a.path)
 			local id, rev, fc, kinds = store.attach(d, { data = data,
-			    name = name, mime = util.mimeof(name, a.path),
-			    title = a.title, tags = a.tags, author = author() })
+			    name = name, mime = mime, title = a.title, tags = a.tags,
+			    meta = a.meta, author = author() })
 
 			if #kinds > 0 then
 				pcall(spawn_enrich, d, path)
 			end
-			return text(("%s rev %d file %s%s\n"):format(store.uri(id), rev,
-			    cid.tostring(fc), #kinds > 0
-			    and ("  queued: " .. table.concat(kinds, ", ")) or ""))
+			return text(R.attached(cli.attached(d, id, rev, fc, kinds, mime)))
 		end,
 	}
 

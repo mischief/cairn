@@ -493,13 +493,22 @@ RETURNING id, file, kind;
 
 - The lease token is `<host>:<pid>:<random>`. It names the enricher
   that holds the job.
-- `kinds` holds only the kinds this enricher can run. Without
-  `--vision`, it leaves out `vision` and `transcript`, so those jobs
-  stay pending.
+- `kinds` holds only the kinds this enricher runs. `cairn enrich`
+  runs `pdf`, `ocr`, and `pandoc`; `cairn experiments enrich` runs
+  `vision` and `transcript`.
 - A lease lasts 120 seconds. While an extractor runs, the enricher
   renews `lease_until` every 30 seconds with the same token check.
 - A `running` job with an expired lease goes back to `pending`. After
   three tries it becomes `failed`, with the error kept.
+- A missing extractor is not a failure. The job goes back to
+  `pending` with the error "X is not installed" and without spending a
+  try, and the enricher skips that kind for the rest of its run. Each
+  enrich run first sets jobs that failed for a missing tool back to
+  pending, so installing the tool and running `cairn enrich` is enough.
+- `attach` warns at once when a tool its jobs need is not on PATH, and
+  names the package. `cairn check` lists every extractor with its path
+  or its package, whether lgml answers, and the jobs waiting for a
+  tool.
 - The enricher finishes a job in one transaction: it sets the job to
   `done` where `id` and `lease` still match, and only if that changes
   a row, it replaces all chunks of that file, kind, and extractor. A
@@ -516,14 +525,14 @@ RETURNING id, file, kind;
 | application/pdf | pdf | `pdftotext -layout`, pages split on form feed |
 | application/pdf, no text layer | ocr | `pdftoppm` then `tesseract` |
 | image/png, image/jpeg | ocr | `tesseract` |
-| image/png, image/jpeg | vision | lgml, only with `--vision` |
-| audio/* | transcript | `ffmpeg` to 16 kHz mono WAV, then lgml, only with `--vision` |
+| image/png, image/jpeg | vision | lgml, from `cairn experiments enrich` |
+| audio/* | transcript | `ffmpeg` to 16 kHz mono WAV, then lgml, from `cairn experiments enrich` |
 | office and html | text | `pandoc -t plain` |
 
 - lgml loads a model on first use. That can take GPU memory from other
-  work on the same machine. So enrich calls lgml only when the caller
-  gives `--vision`, and it names the model (`--model`, default
-  `gemma-4-26b`).
+  work on the same machine. So only `cairn experiments enrich` calls
+  lgml, and it names the model (`--model`, default the `lgml.model`
+  setting). `attach` never queues a model job.
 - Image descriptions go to `/v1/chat/completions` with the image as a
   PNG or JPEG data URL and with thinking off
   (`chat_template_kwargs: {"enable_thinking": false}`).
@@ -586,7 +595,6 @@ CREATE TABLE config (
 | --- | --- | --- |
 | lgml.url | CAIRN_LGML | http://127.0.0.1:8091 |
 | lgml.model | CAIRN_MODEL | gemma-4-26b |
-| enrich.vision | CAIRN_VISION | 0 |
 | mcp.write | CAIRN_MCP_WRITE | 0 |
 | gc.auto | CAIRN_GC_AUTO | 1000 |
 | limit.daily | CAIRN_DAILY_BYTES | 268435456 |
@@ -626,10 +634,12 @@ document and mark the text as stored content, not instructions.
 | command | does |
 | --- | --- |
 | `cairn init` | make an empty database |
-| `cairn put <title> [-t tag]... [file\|-]` | write a markdown note |
+| `cairn put <title> [-t tag]... [--set k=v]... [file\|-]` | write a markdown note |
 | `cairn edit <id> <rev> [file\|-]` | new version of a note |
-| `cairn attach <file> [-t tag]... [--title t]` | store a file, queue extraction |
-| `cairn enrich [--vision] [--model m] [--max n]` | drain the queue |
+| `cairn attach <file> [-t tag]... [--title t] [--set k=v]...` | store a file with metadata, queue extraction |
+| `cairn check` | extractors, lgml, database, and queue state |
+| `cairn enrich [--max n] [--retry-failed]` | drain the queue |
+| `cairn experiments` | list the features that use a model |
 | `cairn search <query>` | search |
 | `cairn get <id\|cid\|uri> [--rev n] [--page n] [--at frag]` | show a document |
 | `cairn cat <id\|cid> [out]` | write the file bytes |
@@ -693,7 +703,7 @@ argument they leave out.
 | recent | since?, author?, limit? | recent versions |
 | wanted | | titles linked but not written |
 | meta | id, set (key -> text, list, or null) | the new metadata |
-| attach | path, title?, tags? | id, rev, file cid, queued job kinds |
+| attach | path, title?, tags?, meta? | id, rev, file cid, queued job kinds, warnings for missing tools, a metadata hint |
 | status | | queue counts by kind and status |
 
 - `put` searches for near duplicates first and returns them with the
@@ -711,6 +721,23 @@ detached `cairn enrich` process with fork and exec. The MCP process
 never runs an extractor itself. A systemd user timer or a cron entry
 that runs `cairn enrich` also works. `put` of a markdown note needs no
 enrichment.
+
+## Experiments
+
+Everything that calls a language model sits behind `cairn experiments`.
+The usage text names the command but not its subcommands; run alone,
+it lists them. These features may change or go away, and none of them
+runs unless asked: `cairn enrich`, `attach`, and the MCP server never
+call a model.
+
+| experiment | does |
+| --- | --- |
+| `enrich [--kind vision\|transcript] [--model m] [--max n]` | queues vision jobs for PNG and JPEG files and transcript jobs for audio, then runs them through lgml |
+
+Planned: metadata guesses with jev (systemone), document expansion
+(search terms written per chunk and indexed), and similar documents
+from embeddings computed in one pass and stored as rows. Each stores
+its results in the database, so searching needs no model.
 
 ## Garbage collection
 

@@ -19,11 +19,13 @@ M.MAXFILE = 64 * 1024 * 1024
 M.RELS = { ["see-also"] = true, cites = true, supersedes = true,
     contradicts = true }
 
--- kinds of extraction job for each mime type; text is indexed inline
+-- kinds of extraction job for each mime type; text is indexed inline.
+-- Jobs that need a model (vision, transcript) are queued by
+-- cairn experiments enrich, not here.
 local JOBS = {
 	["application/pdf"] = { "pdf" },
-	["image/png"] = { "ocr", "vision" },
-	["image/jpeg"] = { "ocr", "vision" },
+	["image/png"] = { "ocr" },
+	["image/jpeg"] = { "ocr" },
 	["text/html"] = { "pandoc" },
 	["application/epub+zip"] = { "pandoc" },
 	["application/rtf"] = { "pandoc" },
@@ -33,13 +35,7 @@ local JOBS = {
 }
 
 function M.jobkinds(mime)
-	if JOBS[mime] then
-		return JOBS[mime]
-	end
-	if mime and mime:match("^audio/") then
-		return { "transcript" }
-	end
-	return {}
+	return JOBS[mime] or {}
 end
 
 -- a conflict error carries the current rev so the caller can retry

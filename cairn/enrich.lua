@@ -66,8 +66,11 @@ local function one(d, job, token, opts, log)
 
 	if not ok then
 		log(("job %d %s: %s"):format(job.id, job.kind, chunks))
-		queue.fail(d, job.id, token, chunks,
-		    tostring(chunks):match("not installed") ~= nil)
+		if tostring(chunks):match("is not installed") then
+			queue.defer(d, job.id, token, chunks)
+			return "missing"
+		end
+		queue.fail(d, job.id, token, chunks)
 		return
 	end
 	for _, c in ipairs(chunks) do
@@ -99,27 +102,21 @@ local function one(d, job, token, opts, log)
 	end
 end
 
--- run(d, opts, log) drains the queue. opts: vision, model, max. Returns
--- the number of jobs it took.
+-- run(d, opts, log) drains the queue. opts: kinds (queue.BASIC by
+-- default), model, max. Returns the number of jobs it took.
 function M.run(d, opts, log)
 	log = log or function() end
 
-	local kinds = {}
-
-	for _, k in ipairs(queue.BASIC) do
-		kinds[#kinds + 1] = k
-	end
-	if opts.vision then
-		for _, k in ipairs(queue.VISION) do
-			kinds[#kinds + 1] = k
-		end
-	end
+	local kinds = opts.kinds or queue.BASIC
 
 	opts.model = opts.model or config.get(d, "lgml.model")
 	opts.url = opts.url or config.get(d, "lgml.url")
 
 	local token = queue.token()
 	local n = 0
+
+	-- a tool installed since the last run brings its jobs back
+	queue.revive(d)
 
 	while not opts.max or n < opts.max do
 		queue.reclaim(d)
@@ -130,7 +127,20 @@ function M.run(d, opts, log)
 			break
 		end
 		n = n + 1
-		one(d, job, token, opts, log)
+		if one(d, job, token, opts, log) == "missing" then
+			-- skip the kind for the rest of this run; its jobs wait
+			local rest = {}
+
+			for _, k in ipairs(kinds) do
+				if k ~= job.kind then
+					rest[#rest + 1] = k
+				end
+			end
+			kinds = rest
+			if #kinds == 0 then
+				break
+			end
+		end
 	end
 	return n
 end

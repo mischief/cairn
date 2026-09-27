@@ -36,6 +36,22 @@ function M.newid()
 	return cid.bases.b.enc(random(10))
 end
 
+-- which(name) -> full path of an executable file on PATH, or nil
+function M.which(name)
+	local stat = require "posix.sys.stat"
+	local unistd = require "posix.unistd"
+
+	for dir in (os.getenv("PATH") or ""):gmatch("[^:]+") do
+		local p = dir .. "/" .. name
+		local st = dir:sub(1, 1) == "/" and stat.stat(p)
+
+		if st and stat.S_ISREG(st.st_mode) ~= 0
+		    and unistd.access(p, "x") == 0 then
+			return p
+		end
+	end
+end
+
 function M.isid(s)
 	return type(s) == "string" and #s == 16 and s:match("^[a-z2-7]+$") ~= nil
 end

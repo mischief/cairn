@@ -9,7 +9,7 @@ local M = {}
 M.LEASE = 120
 M.TRIES = 3
 
--- kinds an enricher runs; vision and transcript need --vision
+-- kinds cairn enrich runs; the model kinds belong to experiments
 M.BASIC = { "pdf", "ocr", "pandoc" }
 M.VISION = { "vision", "transcript" }
 
@@ -85,6 +85,20 @@ function M.fail(d, id, token, err, final)
 	    .. "THEN 'failed' ELSE 'pending' END, error = ?, lease = NULL, "
 	    .. "lease_until = NULL WHERE id = ? AND lease = ?",
 	    { final and 1 or 0, M.TRIES, tostring(err), id, token }) > 0
+end
+
+-- defer(d, id, token, err) puts a job back without spending a try, for
+-- a missing tool: once the tool is installed, the next enrich runs it
+function M.defer(d, id, token, err)
+	return d:run("UPDATE job SET status = 'pending', tries = tries - 1, "
+	    .. "error = ?, lease = NULL, lease_until = NULL "
+	    .. "WHERE id = ? AND lease = ?", { tostring(err), id, token }) > 0
+end
+
+-- revive(d) sets jobs that failed for a missing tool back to pending
+function M.revive(d)
+	return d:run("UPDATE job SET status = 'pending', tries = 0 "
+	    .. "WHERE status = 'failed' AND error LIKE '%is not installed%'")
 end
 
 function M.retry_failed(d)

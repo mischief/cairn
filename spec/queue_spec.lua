@@ -143,3 +143,21 @@ describe("tags", function()
 		d:close()
 	end)
 end)
+
+describe("missing tools", function()
+	it("defers a job without spending a try and revives failed ones", function()
+		local d = assert(db.open(":memory:"))
+		local file = store.putfile(d, "%PDF x", "application/pdf", "kbd")
+
+		queue.enqueue(d, file, "pdf")
+
+		local job = queue.claim(d, queue.BASIC, "a")
+
+		queue.defer(d, job.id, "a", "pdftotext is not installed")
+		assert.same({ "pending", 0 }, { d:row("SELECT status, tries FROM job") })
+		d:exec("UPDATE job SET status = 'failed', tries = 3")
+		assert.equal(1, queue.revive(d))
+		assert.equal("pending", d:row("SELECT status FROM job"))
+		d:close()
+	end)
+end)
