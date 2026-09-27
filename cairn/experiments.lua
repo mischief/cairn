@@ -645,7 +645,7 @@ function M.state(d, name, w, model, vocab, now, blank)
 	local cur = now(w)
 
 	if not r then
-		return (cur == "" or (blank or {})[cur]) and "new" or "hand"
+		return (cur == "" or (blank or {})[cur]) and "new" or "edited"
 	end
 	return receipt.state(r, { v = M.VERSION[name], model = model,
 	    content = receipt.content(d, w.content), vocab = vocab }, cur)
@@ -688,6 +688,13 @@ local function plan(p, d, name, model, vocab, now, blank)
 		if run[st] then
 			ids[#ids + 1] = id
 		end
+	end
+	-- a vocabulary or version change marks every document stale; a
+	-- rerun of all of them must be asked for by name
+	if p.opts.stale and not p.opts.all and #tags == 0 then
+		error(("--stale would run %s on %d document%s; limit it with --tag "
+		    .. "or ids, or give --all"):format(name, #ids,
+		    #ids == 1 and "" or "s"), 0)
 	end
 	return ids, count
 end
@@ -1456,7 +1463,7 @@ M.list.update = {
 M.list.status = {
 	usage = "status",
 	desc = "count documents by receipt state for form, topics, and "
-	    .. "abstract: new, changed, old, model, vocab, current, and hand",
+	    .. "abstract: new, changed, old, model, vocab, current, and edited",
 	run = function(p, d)
 		local model = p.opts.model or config.get(d, "lgml.decide")
 		local q = { args = {}, opts = {} }
@@ -1468,7 +1475,7 @@ M.list.status = {
 		local _, ac = plan(q, d, "abstract", model,
 		    receipt.hash(M.SUMMARY), abstractnow)
 		local states = { "new", "changed", "old", "model", "vocab",
-		    "current", "hand" }
+		    "current", "edited" }
 
 		print(("%-8s %s"):format("", table.concat(states, "  ")))
 		for _, x in ipairs({ { "form", fc }, { "topics", tc },
@@ -1481,7 +1488,7 @@ M.list.status = {
 			print(("%-8s %s"):format(x[1], table.concat(row, "  ")))
 		end
 		print("a plain run takes new and changed; --stale adds old, model, "
-		    .. "and vocab; hand is never rerun unless named")
+		    .. "and vocab; edited is never rerun unless named")
 	end,
 }
 

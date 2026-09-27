@@ -57,7 +57,7 @@ function M.hash(s)
 	end))
 end
 
--- state(r, want, now) -> "new", "hand" (a person changed what the
+-- state(r, want, now) -> "new", "edited" (someone changed what the
 -- classifier wrote), "changed" (content), "old" (classifier version),
 -- "model", "vocab", or "current". want holds v, model, content, and
 -- vocab; now is what the document holds today, in the form of r.wrote.
@@ -66,7 +66,7 @@ function M.state(r, want, now)
 		return "new"
 	end
 	if (r.wrote or "") ~= (now or "") then
-		return "hand"
+		return "edited"
 	end
 	if r.content ~= want.content then
 		return "changed"
@@ -84,7 +84,7 @@ function M.state(r, want, now)
 end
 
 -- which(opts) -> set of states to run: new and changed by default;
--- --stale adds old, model, and vocab; --all runs every state but hand
+-- --stale adds old, model, and vocab; --all runs every state but edited
 function M.which(opts)
 	local s = { new = true, changed = true }
 

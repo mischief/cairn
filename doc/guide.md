@@ -357,7 +357,7 @@ later run what to do:
 | new | never classified | by default |
 | changed | the text changed since | by default |
 | old, model, vocab | the classifier, model, or vocabulary changed since | with `--stale` |
-| hand | a person changed what the classifier wrote | only when named |
+| edited | someone else, a person or an agent, changed what the classifier wrote | only when named |
 | current | nothing changed | with `--all` |
 
     cairn experiments status                  # counts by state
@@ -370,7 +370,7 @@ after editing that topic's scope note. A full run takes about 3
 seconds a document, so rerun only what a change affects.
 
 Check a dry run before `--apply`, and fix single documents by hand with
-`cairn tag` and `cairn meta`; a hand fix is safe from later runs.
+`cairn tag` and `cairn meta`; such a fix is safe from later runs.
 
 ## Pipes
 

@@ -19,7 +19,7 @@ describe("receipt", function()
 
 		assert.equal("new", receipt.state(nil, want, ""))
 		assert.equal("current", receipt.state(r, want, "x"))
-		assert.equal("hand", receipt.state(r, want, "y"))
+		assert.equal("edited", receipt.state(r, want, "y"))
 		assert.equal("changed", receipt.state(r, { v = 3, model = "m",
 		    content = "1@u", vocab = "ab" }, "x"))
 		assert.equal("old", receipt.state(r, { v = 4, model = "m",
@@ -33,6 +33,6 @@ describe("receipt", function()
 	it("runs new and changed by default", function()
 		assert.same({ new = true, changed = true }, receipt.which({}))
 		assert.is_true(receipt.which({ stale = true }).vocab)
-		assert.is_nil(receipt.which({ all = true }).hand)
+		assert.is_nil(receipt.which({ all = true }).edited)
 	end)
 end)

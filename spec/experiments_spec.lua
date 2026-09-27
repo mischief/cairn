@@ -192,3 +192,17 @@ describe("experiments --tag", function()
 		assert.equal(1, #calls)
 	end)
 end)
+
+describe("experiments --stale", function()
+	it("needs --tag, ids, or --all", function()
+		local d = assert(db.open(":memory:"))
+
+		store.note(d, { title = "rsa", body = "ciphers", author = "k" })
+		assert.has_error(function()
+			x.main({ args = { "form" }, opts = { stale = true, t = {} } }, d,
+			    ":memory:")
+		end, "--stale would run form on 1 document; limit it with --tag "
+		    .. "or ids, or give --all")
+		d:close()
+	end)
+end)

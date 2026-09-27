@@ -834,8 +834,9 @@ time), a hash of its vocabulary, and what it wrote. It writes as
 author `cairn:NAME`. A run compares the receipt with the present:
 
 - no receipt and nothing written: new;
-- the document no longer holds what the receipt says was written: a
-  person changed it, and runs leave it alone unless it is named;
+- the document no longer holds what the receipt says was written:
+  edited, by a person or another agent; runs leave it alone unless it
+  is named;
 - the content key differs: changed;
 - a lower version, another model, or another vocabulary hash: stale.
 
