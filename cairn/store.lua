@@ -609,8 +609,10 @@ function M.write(d, w)
 		local n = d:row("SELECT n FROM doc WHERE id = ?", { id })
 
 		d:run("DELETE FROM doc_fts WHERE rowid = ?", { n })
-		d:run("INSERT INTO doc_fts (rowid, title, tags) VALUES (?, ?, ?)",
-		    { n, title, table.concat(tlist, " ") })
+		d:run("INSERT INTO doc_fts (rowid, title, tags, abstract) "
+		    .. "VALUES (?, ?, ?, ?)", { n, title, table.concat(tlist, " "),
+		    d:row("SELECT value FROM meta WHERE doc = ? AND key = "
+		    .. "'dcterms.abstract' ORDER BY seq LIMIT 1", { id }), n = 4 })
 		return id, rev, c
 	end)
 end

@@ -263,7 +263,7 @@ function M.search(d, q, opts)
 	end
 
 	if match then
-		for _, r in ipairs(d:rows("SELECT d.*, bm25(doc_fts, 10.0, 5.0) AS s "
+		for _, r in ipairs(d:rows("SELECT d.*, bm25(doc_fts, 10.0, 5.0, 3.0) AS s "
 		    .. "FROM doc_fts JOIN doc d ON d.n = doc_fts.rowid "
 		    .. "WHERE doc_fts MATCH ? AND " .. where .. " LIMIT 500",
 		    append({ match }, wargs))) do

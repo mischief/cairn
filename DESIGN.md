@@ -616,7 +616,7 @@ CREATE VIRTUAL TABLE chunk_fts USING fts5 (
 );
 
 CREATE VIRTUAL TABLE doc_fts USING fts5 (
-	title, tags,
+	title, tags, abstract,
 	tokenize = 'porter unicode61 remove_diacritics 2'
 );
 ```
@@ -628,7 +628,9 @@ CREATE VIRTUAL TABLE doc_fts USING fts5 (
 - A query runs against `doc_fts` and `chunk_fts` and joins chunks to
   documents through `doc.content`. Results group by document and keep
   the best chunk for each. When several documents share a file, each
-  of them is a result. Title hits weigh more than body hits.
+  of them is a result. Title hits weigh most, then tags, then the
+  abstract (dcterms.abstract), then body text. A document scores by
+  its best chunk plus a quarter and an eighth of the next two.
 - The porter tokenizer splits at `_`, so identifiers such as
   `GPIO_OUT_W1TS` match as words.
 - When the word index finds nothing, search scans chunk text with

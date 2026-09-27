@@ -10,6 +10,15 @@ local store = require "cairn.store"
 
 local M = {}
 
+-- abstract(e) -> the first dcterms.abstract value of an expected row set
+function M.abstract(e)
+	for _, m in ipairs(e.meta) do
+		if m.key == "dcterms.abstract" and m.seq == 1 then
+			return m.value
+		end
+	end
+end
+
 local function unnull(v)
 	if v == drisl.null then
 		return nil
@@ -219,11 +228,12 @@ function M.check(d)
 			end
 		end
 
-		local fts = d:rows("SELECT title, tags FROM doc_fts WHERE rowid = ?",
-		    { row.n })[1]
+		local fts = d:rows("SELECT title, tags, abstract FROM doc_fts "
+		    .. "WHERE rowid = ?", { row.n })[1]
 
 		if not fts or fts.title ~= e.title
-		    or fts.tags ~= table.concat(e.tags, " ") then
+		    or fts.tags ~= table.concat(e.tags, " ")
+		    or fts.abstract ~= M.abstract(e) then
 			bad(id, "doc_fts", e.title, fts and fts.title)
 		end
 		::next::
@@ -286,8 +296,9 @@ function M.rebuild(d)
 			local row = store.doc(d, id)
 
 			d:run("DELETE FROM doc_fts WHERE rowid = ?", { row.n })
-			d:run("INSERT INTO doc_fts (rowid, title, tags) VALUES (?, ?, ?)",
-			    { row.n, e.title, table.concat(e.tags, " ") })
+			d:run("INSERT INTO doc_fts (rowid, title, tags, abstract) "
+			    .. "VALUES (?, ?, ?, ?)", { row.n, e.title,
+			    table.concat(e.tags, " "), M.abstract(e), n = 4 })
 			n = n + 1
 		end
 	end)

@@ -202,3 +202,18 @@ describe("pandoc", function()
 		assert.is_nil(ch[1].body:find("#g", 1, true))
 	end)
 end)
+
+describe("abstract index", function()
+	it("finds a document by a word only its abstract holds", function()
+		local search = require "cairn.search"
+		local derive = require "cairn.derive"
+		local d = assert(db.open(":memory:"))
+		local id = store.note(d, { title = "venti", body = "archival blocks",
+		    author = "k", meta = { ["dcterms.abstract"] = "Write-once "
+		    .. "storage with deduplication." } })
+
+		assert.equal(id, search.search(d, "deduplication")[1].id)
+		assert.same({}, derive.check(d))
+		d:close()
+	end)
+end)

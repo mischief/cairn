@@ -283,6 +283,22 @@ CREATE TABLE similar (
 CREATE INDEX similar_other ON similar (other);
 ]]
 
+-- doc_fts gains the abstract, so search matches summary words
+M.migrations[9] = [[
+DROP TABLE doc_fts;
+CREATE VIRTUAL TABLE doc_fts USING fts5 (
+	title, tags, abstract,
+	tokenize = 'porter unicode61 remove_diacritics 2'
+);
+INSERT INTO doc_fts (rowid, title, tags, abstract)
+SELECT d.n, d.title,
+	coalesce((SELECT group_concat(name, ' ') FROM (SELECT name FROM tag
+	    WHERE doc = d.id ORDER BY name)), ''),
+	(SELECT value FROM meta WHERE doc = d.id AND key = 'dcterms.abstract'
+	    ORDER BY seq LIMIT 1)
+FROM doc d;
+]]
+
 M.VERSION = #M.migrations
 
 return M
