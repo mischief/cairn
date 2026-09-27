@@ -575,6 +575,9 @@ function R.hits(v)
 		s[#s + 1] = ("%s  %s  (%s, %s)%s\n"):format(store.uri(h.id),
 		    h.title, h.author or "?", h.updated:sub(1, 10),
 		    h.pending and "  text pending" or "")
+		if h.abstract then
+			s[#s + 1] = ("    = %s\n"):format(h.abstract)
+		end
 		for _, c in ipairs(h.chunks or {}) do
 			s[#s + 1] = ("    %s%s\n"):format(c.page
 			    and ("p" .. c.page .. ": ") or "",

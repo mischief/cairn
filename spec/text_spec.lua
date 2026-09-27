@@ -152,3 +152,17 @@ describe("search depth", function()
 		d:close()
 	end)
 end)
+
+describe("abstract in search", function()
+	it("shows the first sentence of dcterms.abstract", function()
+		local search = require "cairn.search"
+		local d = assert(db.open(":memory:"))
+
+		store.note(d, { title = "venti", body = "archival blocks by hash",
+		    author = "k", meta = { ["dcterms.abstract"] = "Write-once "
+		    .. "storage named by hash. It dedups blocks." } })
+		assert.equal("Write-once storage named by hash.",
+		    search.search(d, "archival")[1].abstract)
+		d:close()
+	end)
+end)

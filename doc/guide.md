@@ -122,6 +122,7 @@ Metadata keys are `namespace.name`, mostly Dublin Core terms:
 | `dcterms.rights` | license: an SPDX id such as `MIT`, or `non-free` |
 | `dcterms.rightsHolder` | who holds the rights |
 | `dcterms.language` | language code |
+| `dcterms.abstract` | a short summary; `summarize` writes one |
 
     cairn meta ID                          # show
     cairn meta ID dcterms.date=1985        # set
@@ -180,6 +181,9 @@ Search first, before you research or write.
 | `date:1985`, `date:<1990` | `dcterms.date` |
 | `creator:TEXT` | `dcterms.creator` holds the text |
 | `meta:KEY=VALUE`, `meta:KEY~PART` | any metadata key |
+
+A hit shows its title, the first sentence of its abstract after `=`,
+and its best passages.
 
 Words match as words and word starts. Quote a phrase. FTS5 syntax (AND,
 OR, NOT, NEAR) passes through. Each hit shows up to 3 passages with
@@ -338,8 +342,9 @@ run when asked. Most do a dry run by default and write with `--apply`.
 | `topics` | picks each document's topics, walking down the hierarchy |
 | `similar` | embeds each document and stores its nearest documents |
 | `expand` | writes search terms for each chunk |
+| `summarize` | writes a 2-sentence abstract of each document |
 
-`form` and `topics` leave a receipt on each document they change: a
+`form`, `topics`, and `summarize` leave a receipt on each document they change: a
 `gen.form` or `gen.topics` key with the classifier version, the model,
 the content it read, a hash of the vocabulary, and what it wrote. They
 write as author `cairn:form` or `cairn:topics`. The receipt tells a

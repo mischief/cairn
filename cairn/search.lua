@@ -335,8 +335,14 @@ function M.search(d, q, opts)
 
 		h.pending = h.content and store.pending(d, h.content) or nil
 		h.uri = store.uri(h.id, nil, h.page and ("p=" .. h.page) or nil)
-		h.content, h.best = nil, nil
+		h.content, h.best, h.seen, h.depth = nil, nil, nil, nil
 		h.score = tonumber(("%.4g"):format(-h.score))
+
+		-- the first sentence of the abstract says what a hit is
+		local ab = d:row("SELECT value FROM meta WHERE doc = ? AND key = "
+		    .. "'dcterms.abstract' ORDER BY seq LIMIT 1", { h.id })
+
+		h.abstract = ab and (ab:match("^(.-[%.!?])%s") or ab) or nil
 		out[#out + 1] = h
 	end
 	return out, listed or #order

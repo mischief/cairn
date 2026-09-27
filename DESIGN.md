@@ -812,6 +812,7 @@ call a model.
 | `topics [ID... \| --all] [--apply]` | picks each document's topics by walking down the topic hierarchy (see below) |
 | `similar [--top n] [--force]` | embeds each document once, as the mean of up to 48 of its chunks, and stores its nearest documents as rows |
 | `expand ID... \| --all` | writes search terms and questions per chunk and indexes them |
+| `summarize [ID... \| --stale \| --all] [--apply]` | writes a 2-sentence `dcterms.abstract` from the start and the middle of each document; the receipt holds a hash of the abstract, so an edited abstract is left alone; search shows its first sentence under a hit |
 
 The experiments call lgml through lgml-client, which is optional: cairn
 installs and runs without it, and `cairn check` says whether it is
@@ -823,7 +824,7 @@ front matter are often in another language.
 Each experiment stores its results in the database, so searching needs
 no model.
 
-A classifier that writes into documents (form, topics) leaves a
+A classifier that writes into documents (form, topics, summarize) leaves a
 receipt: one metadata value, `gen.form` or `gen.topics`, holding its
 version, the model, a content key (file id and the newest extraction
 time), a hash of its vocabulary, and what it wrote. It writes as

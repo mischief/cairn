@@ -587,7 +587,7 @@ end
 local receipt = require "cairn.receipt"
 
 -- classifier versions; raising one makes earlier receipts old
-M.VERSION = { form = 2, topics = 3 }
+M.VERSION = { form = 2, topics = 3, abstract = 1 }
 
 -- state(d, name, w, model, vocab, now, blank) -> the receipt state of
 -- version w for classifier name. now(w) is what w holds today; without
@@ -1293,10 +1293,88 @@ M.list.topics = {
 	end,
 }
 
+-- summarize: a model writes a short abstract (dcterms.abstract) from
+-- the start and the middle of a document. The receipt records a hash
+-- of the abstract, so an abstract a person edits is left alone.
+
+M.SUMMARY = "Summarize this document in 2 plain sentences for someone "
+    .. "deciding whether to read it: what it covers and what it tells "
+    .. "that the title does not, such as the problem, the method, the "
+    .. "scope, or the main parts. Name specifics. Do not start with "
+    .. "\"This document\", do not address the reader, no praise, no "
+    .. "markdown, and do not mention the title or this request."
+
+local function abstractnow(w)
+	local a = w.meta["dcterms.abstract"]
+
+	return type(a) == "string" and receipt.hash(a) or ""
+end
+
+local function summarystate(d, w)
+	local store = require "cairn.store"
+	local chunks = {}
+
+	for _, e in ipairs(w.content and store.text(d, w.content) or {}) do
+		for _, c in ipairs(e.chunks) do
+			chunks[#chunks + 1] = c
+		end
+	end
+
+	local s = ("Title: %s\n\nStart:\n%s"):format(w.title,
+	    sample(chunks, 1, 4000))
+
+	if #chunks > 4 then
+		s = s .. "\n\nFrom the middle:\n" .. sample(chunks, #chunks // 2,
+		    2000)
+	end
+	return require("cairn.chunk").utf8(s)
+end
+
+M.list.summarize = {
+	usage = "summarize [ID... | --stale | --all] [--tag t] [--apply]",
+	desc = "write a 2-sentence abstract (dcterms.abstract) of each "
+	    .. "document; search shows its first sentence under a hit",
+	run = function(p, d)
+		local lgml = require "cairn.lgml"
+		local store = require "cairn.store"
+		local model = p.opts.model or config.get(d, "lgml.decide")
+		local vocab = receipt.hash(M.SUMMARY)
+		local ids = plan(p, d, "abstract", model, vocab, abstractnow)
+		local c = lgml.client(d, { timeout = 600 })
+		local done, t0 = 0, os.time()
+
+		for _, id in ipairs(ids) do
+			local w = store.current(d, id)
+			local text = lgml.chat(c, {
+				model = model,
+				max_tokens = 200,
+				temperature = 0,
+				chat_template_kwargs = { enable_thinking = false },
+				messages = { { role = "user", content = summarystate(d, w)
+				    .. "\n\n" .. M.SUMMARY } },
+			})
+
+			text = text:gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+			done = done + 1
+			print(("%s  %s\n    %s"):format(id, w.title, text))
+			if p.opts.apply then
+				stamp(d, "abstract", id, model, vocab, receipt.hash(text),
+				    function(nw)
+					nw.meta["dcterms.abstract"] = text
+				end)
+			end
+		end
+		c:close()
+		print(("\n%d documents, %d s; %s"):format(done, os.time() - t0,
+		    p.opts.apply and "abstracts written"
+		    or "dry run; --apply writes dcterms.abstract"))
+	end,
+}
+
 M.list.status = {
 	usage = "status",
-	desc = "count documents by receipt state for form and topics: new, "
-	    .. "changed, old, model, vocab, current, and hand",
+	desc = "count documents by receipt state for form, topics, and "
+	    .. "abstract: new, changed, old, model, vocab, current, and hand",
 	run = function(p, d)
 		local model = p.opts.model or config.get(d, "lgml.decide")
 		local q = { args = {}, opts = {} }
@@ -1305,11 +1383,14 @@ M.list.status = {
 		local okv, v = pcall(topiclist, d)
 		local tc = okv and select(2, plan(q, d, "topics", model,
 		    topicvocab(v), topicnow)) or {}
+		local _, ac = plan(q, d, "abstract", model,
+		    receipt.hash(M.SUMMARY), abstractnow)
 		local states = { "new", "changed", "old", "model", "vocab",
 		    "current", "hand" }
 
 		print(("%-8s %s"):format("", table.concat(states, "  ")))
-		for _, x in ipairs({ { "form", fc }, { "topics", tc } }) do
+		for _, x in ipairs({ { "form", fc }, { "topics", tc },
+		    { "abstract", ac } }) do
 			local row = {}
 
 			for i, s in ipairs(states) do
