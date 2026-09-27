@@ -765,32 +765,4 @@ M.topics = {
 	    "Raising children." },
 }
 
--- aliases: old tag -> topic slug. An alias sends a tag to its topic on
--- write and on search.
-M.aliases = {
-	crypto = "cryptography",
-	networking = "computer-networks",
-	filesystem = "file-systems",
-	compiler = "compilers",
-	debugger = "debugging",
-	editor = "text-editors",
-	kernel = "kernels",
-	storage = "data-storage",
-	compression = "data-compression",
-	dsp = "digital-signal-processing",
-	synthesis = "sound-synthesis",
-	namespaces = "name-spaces",
-	ipc = "interprocess-communication",
-	isa = "instruction-sets",
-	build = "build-systems",
-	shell = "command-languages",
-	security = "security",
-	concurrency = "concurrency",
-	firmware = "firmware",
-	audio = "audio",
-	printing = "printing",
-	typesetting = "typesetting",
-	email = "email",
-}
-
 return M

@@ -919,10 +919,9 @@ function C.topics(p, d)
 		error("usage: cairn topics seed", 0)
 	end
 
-	local added, differ, aliases = require("cairn.topics").seed(d,
-	    "cairn")
+	local added, differ = require("cairn.topics").seed(d, "cairn")
 
-	print(("%d topics added, %d aliases added"):format(added, aliases))
+	print(("%d topics added"):format(added))
 	for _, t in ipairs(differ) do
 		print("scope note differs from the starter list: " .. t)
 	end

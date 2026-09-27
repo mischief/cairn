@@ -43,10 +43,4 @@ describe("vocab", function()
 			up(t[1], {})
 		end
 	end)
-
-	it("aliases point at topics", function()
-		for alias, slug in pairs(vocab.aliases) do
-			assert.is_not_nil(by[slug], alias .. " -> " .. slug)
-		end
-	end)
 end)

@@ -41,12 +41,12 @@ function M.descendants(d, tag)
 end
 
 -- seed(d, author, vocab) -> topics added, list of topics whose scope
--- note differs from the list, aliases added. It writes an about page
--- for each topic that has none and never changes an existing page.
+-- note differs from the list. It writes an about page for each topic
+-- that has none and never changes an existing page.
 function M.seed(d, author, vocab)
 	vocab = vocab or require "cairn.vocab"
 
-	local added, differ, aliases = 0, {}, 0
+	local added, differ = 0, {}
 
 	for _, t in ipairs(vocab.topics) do
 		local slug, label, broader, scope = t[1], t[2], t[3], t[4]
@@ -79,16 +79,7 @@ function M.seed(d, author, vocab)
 			added = added + 1
 		end
 	end
-	for alias, slug in pairs(vocab.aliases or {}) do
-		local tag = M.PREFIX .. slug
-
-		if not d:row("SELECT 1 FROM tag_alias WHERE alias = ?", { alias }) then
-			d:run("INSERT INTO tag_alias (alias, name) VALUES (?, ?)",
-			    { alias, tag })
-			aliases = aliases + 1
-		end
-	end
-	return added, differ, aliases
+	return added, differ
 end
 
 return M

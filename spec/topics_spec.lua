@@ -14,7 +14,6 @@ local VOCAB = {
 		{ "mathematics", "Mathematics", "", "all of it" },
 		{ "cryptography", "Cryptography", "security mathematics", "ciphers" },
 	},
-	aliases = { crypto = "cryptography" },
 }
 
 describe("topics", function()
@@ -29,9 +28,9 @@ describe("topics", function()
 	end)
 
 	it("seeds about pages once and keeps edited ones", function()
-		local added, differ, aliases = topics.seed(d, "cairn", VOCAB)
+		local added, differ = topics.seed(d, "cairn", VOCAB)
 
-		assert.same({ 5, {}, 1 }, { added, differ, aliases })
+		assert.same({ 5, {} }, { added, differ })
 		assert.equal(0, (topics.seed(d, "cairn", VOCAB)))
 
 		local id = d:row("SELECT id FROM doc WHERE about = 'topic/privacy'")
@@ -51,7 +50,7 @@ describe("topics", function()
 		local tor = store.note(d, { title = "Tor", body = "onion routing",
 		    author = "k", tags = { "topic/anonymity" } })
 		local rsa = store.note(d, { title = "RSA", body = "onion keys",
-		    author = "k", tags = { "crypto" } })
+		    author = "k", tags = { "topic/cryptography" } })
 
 		local function ids(q)
 			local out = {}
