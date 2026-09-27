@@ -307,8 +307,9 @@ local function targets(p, d)
 		ids[#ids + 1] = cli.docid(d, a)
 	end
 	if #ids == 0 then
+		-- about pages define tags; they are not content to compare
 		for _, r in ipairs(d:rows("SELECT id FROM doc WHERE hidden = 0 "
-		    .. "AND superseded_by IS NULL ORDER BY title")) do
+		    .. "AND superseded_by IS NULL AND about IS NULL ORDER BY title")) do
 			ids[#ids + 1] = r.id
 		end
 	end
@@ -428,7 +429,8 @@ M.list.similar = {
 
 		for _, r in ipairs(d:rows("SELECT v.doc, v.v FROM docvec v "
 		    .. "JOIN doc d ON d.id = v.doc WHERE v.model = ? AND v.dims = ? "
-		    .. "AND d.hidden = 0 AND d.superseded_by IS NULL",
+		    .. "AND d.hidden = 0 AND d.superseded_by IS NULL "
+		    .. "AND d.about IS NULL",
 		    { model, dims })) do
 			vecs[#vecs + 1] = { id = r.doc, v = unpack(r.v) }
 		end

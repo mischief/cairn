@@ -419,7 +419,7 @@ M.SIMILAR = 0.5
 function M.similar(d, id, min)
 	return d:rows("SELECT s.other AS id, s.score, d.title FROM similar s "
 	    .. "JOIN doc d ON d.id = s.other WHERE s.doc = ? AND d.hidden = 0 "
-	    .. "AND s.score >= ? AND NOT EXISTS (SELECT 1 FROM link l WHERE "
+	    .. "AND d.about IS NULL AND s.score >= ? AND NOT EXISTS (SELECT 1 FROM link l WHERE "
 	    .. "(l.src = s.doc AND l.dst = s.other) OR (l.src = s.other AND "
 	    .. "l.dst = s.doc)) ORDER BY s.score DESC LIMIT 5",
 	    { id, min or M.SIMILAR })
