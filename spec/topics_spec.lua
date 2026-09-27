@@ -79,3 +79,32 @@ describe("topics", function()
 		assert.equal(1, count["topic/anonymity"])
 	end)
 end)
+
+describe("topic guard", function()
+	it("refuses a topic/ tag without an about page", function()
+		local d = assert(db.open(":memory:"))
+
+		assert.has_error(function()
+			store.note(d, { title = "x", body = "y", author = "k",
+			    tags = { "topic/made-up" } })
+		end)
+		topics.seed(d, "cairn", VOCAB)
+
+		local id = store.note(d, { title = "x", body = "y", author = "k",
+		    tags = { "topic/privacy" } })
+		local page = d:row("SELECT id FROM doc WHERE about = 'topic/privacy'")
+
+		store.update(d, page, nil, "k", function(w)
+			w.hidden = true
+		end)
+		-- a document keeps a topic it holds after the topic is hidden
+		store.update(d, id, nil, "k", function(w)
+			w.title = "x2"
+		end)
+		assert.has_error(function()
+			store.note(d, { title = "z", body = "y", author = "k",
+			    tags = { "topic/privacy" } })
+		end)
+		d:close()
+	end)
+end)

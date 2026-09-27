@@ -458,7 +458,19 @@ function M.write(d, w)
 			id = util.newid()
 		end
 
-		local tlist = assert(tags.clean(d, w.tags))
+		local had = {}
+
+		for _, r in ipairs(d:rows("SELECT name FROM tag WHERE doc = ?",
+		    { id })) do
+			had[r.name] = true
+		end
+
+		local tlist, terr = tags.clean(d, w.tags, had)
+
+		if not tlist then
+			error(terr, 0)
+		end
+
 		local mlist, merr = meta.clean(w.meta)
 
 		if not mlist then

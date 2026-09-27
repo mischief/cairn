@@ -29,8 +29,13 @@ function M.resolve(d, name)
 	    or name
 end
 
--- clean(d, list) -> sorted unique resolved names, or nil, reason
-function M.clean(d, list)
+-- topics are tags under this prefix; each needs an about page
+M.TOPIC = "topic/"
+
+-- clean(d, list, had) -> sorted unique resolved names, or nil, reason.
+-- A topic/ tag must have an about page, unless the set had (the tags
+-- the document holds now) already holds it.
+function M.clean(d, list, had)
 	local seen, out = {}, {}
 
 	for _, s in ipairs(list or {}) do
@@ -40,6 +45,14 @@ function M.clean(d, list)
 			return nil, err
 		end
 		t = M.resolve(d, t)
+		if (t == "topic" or t:sub(1, #M.TOPIC) == M.TOPIC)
+		    and not (had and had[t])
+		    and not d:row("SELECT 1 FROM doc WHERE about = ? AND hidden = 0 "
+		    .. "AND superseded_by IS NULL", { t }) then
+			return nil, ("no topic %s: cairn tags topic/ lists the topics; a "
+			    .. "new one needs an about page (cairn put --about %s)")
+			    :format(t, t)
+		end
 		if not seen[t] then
 			seen[t] = true
 			out[#out + 1] = t
