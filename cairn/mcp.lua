@@ -116,6 +116,8 @@ function M.tools(d, path, author)
 			    desc = "documents must have all of these tags" },
 			superseded = mcptk.bool{ default = false,
 			    desc = "include superseded documents" },
+			hidden = mcptk.bool{ default = false,
+			    desc = "search only hidden documents" },
 			limit = mcptk.int{ default = 10, min = 1, max = 50 },
 			chunks = mcptk.int{ default = 3, min = 1, max = 10,
 			    desc = "matching passages to return per document" },
@@ -123,7 +125,8 @@ function M.tools(d, path, author)
 		},
 		run = function(a)
 			local hits, total = search.search(d, a.query, { tag = a.tags,
-			    superseded = a.superseded, limit = a.limit,
+			    superseded = a.superseded, hidden = a.hidden,
+			    limit = a.limit,
 			    offset = a.offset, chunks = a.chunks })
 
 			return data(R.hits({ hits = hits, total = total }))
@@ -402,14 +405,15 @@ function M.tools(d, path, author)
 
 			local name = a.path:match("([^/]+)$")
 			local mime = util.mimeof(name, a.path)
-			local id, rev, fc, kinds = store.attach(d, { data = data,
-			    name = name, mime = mime, title = a.title, tags = a.tags,
-			    meta = a.meta, author = author() })
+			local id, rev, fc, kinds, existing = store.attach(d, {
+			    data = data, name = name, mime = mime, title = a.title,
+			    tags = a.tags, meta = a.meta, author = author() })
 
 			if #kinds > 0 then
 				pcall(spawn_enrich, d, path)
 			end
-			return text(R.attached(cli.attached(d, id, rev, fc, kinds, mime)))
+			return text(R.attached(cli.attached(d, id, rev, fc, kinds, mime,
+			    existing)))
 		end,
 	}
 

@@ -155,6 +155,7 @@ env: CAIRN_DB (default $XDG_DATA_HOME/cairn/cairn.db), CAIRN_AUTHOR
 local LISTS = { t = "t", tag = "t", set = "set" }
 local FLAGS = { json = true, all = true, remove = true,
     ["from-file"] = true, ["dry-run"] = true, docs = true, meta = true,
+    apply = true, force = true, hidden = true,
     unset = true,
     ["retry-failed"] = true, help = true, h = true }
 
@@ -705,19 +706,24 @@ function C.attach(p, d)
 	local data = assert(util.readfile(path))
 	local name = path:match("([^/]+)$")
 	local mime = p.opts.mime or util.mimeof(name, path)
-	local id, rev, fc, kinds = store.attach(d, { data = data, name = name,
-	    mime = mime, title = p.opts.title, tags = p.opts.t,
+	local id, rev, fc, kinds, existing = store.attach(d, { data = data,
+	    name = name, mime = mime, title = p.opts.title, tags = p.opts.t,
 	    meta = require("cairn.meta").apply({}, p.opts.set),
-	    author = M.author() })
+	    force = p.opts.force, author = M.author() })
 
-	out(p.opts, M.attached(d, id, rev, fc, kinds, mime), R.attached)
+	out(p.opts, M.attached(d, id, rev, fc, kinds, mime, existing),
+	    R.attached)
 end
 
 -- attached(...) -> the result of an attach, with warnings and hints
-function M.attached(d, id, rev, fc, kinds, mime)
+function M.attached(d, id, rev, fc, kinds, mime, existing)
 	local v = { id = id, rev = rev, uri = store.uri(id),
-	    file = cid.tostring(fc), jobs = kinds,
+	    file = cid.tostring(fc), jobs = kinds, existing = existing or nil,
 	    warnings = M.warnings(kinds, mime) }
+
+	if existing then
+		return v
+	end
 	local m = store.current(d, id).meta
 
 	if not m["dcterms.date"] and mime ~= "text/markdown" then
@@ -728,6 +734,12 @@ function M.attached(d, id, rev, fc, kinds, mime)
 end
 
 function R.attached(v)
+	if v.existing then
+		return ("%s rev %d already holds this file; nothing added "
+		    .. "(attach --force makes a second document)\n"):format(v.uri,
+		    v.rev)
+	end
+
 	local s = { ("%s rev %d file %s%s\n"):format(v.uri, v.rev, v.file,
 	    #v.jobs > 0 and ("  queued: " .. join(v.jobs)) or "") }
 
@@ -762,10 +774,40 @@ function C.enrich(p, d, path)
 	print(("%d jobs"):format(n))
 end
 
+M.SEARCHHELP = [=[
+usage: cairn search QUERY [--limit n] [--offset n] [--chunks n] [--all]
+                   [--hidden]
+                   [-t tag]... [--json]
+
+QUERY is words, matched as words and word starts in titles, tags, and
+the text of every file. Quote "a phrase". FTS5 syntax (AND, OR, NOT,
+NEAR, *) passes through. Filters go in the query:
+  tag:TAG            the tag, or a tag under it: tag:hw matches hw/stm32
+  mime:pdf           mime:application/pdf, or a type prefix
+  author:NICK        who wrote the version into cairn
+  since:2026-09-01   updated on or after
+  date:1985  date:<1990  date:>=2001-06   dcterms.date, as EDTF
+  creator:TEXT       dcterms.creator holds TEXT: creator:"Rob Pike"
+  meta:KEY  meta:KEY=VALUE  meta:KEY~PART
+--hidden searches only hidden documents (cairn hide), so they can be
+found again and unhidden: cairn search --hidden '*'.
+--all includes superseded documents. --chunks sets the passages shown
+per document (3). A query of filters alone lists the newest documents.
+Examples:
+  cairn search 'virtqueue notification'
+  cairn search 'name space tag:plan9'
+  cairn search 'date:<1990 tag:security'
+]=]
+
 function C.search(p, d)
 	local q = table.concat(p.args, " ")
+
+	if q:match("^%s*$") and #p.opts.t == 0 then
+		io.write(M.SEARCHHELP)
+		return
+	end
 	local hits, total = search.search(d, q, { tag = p.opts.t,
-	    superseded = p.opts.all,
+	    superseded = p.opts.all, hidden = p.opts.hidden,
 	    limit = math.tointeger(tonumber(p.opts.limit)),
 	    offset = math.tointeger(tonumber(p.opts.offset)),
 	    chunks = math.tointeger(tonumber(p.opts.chunks)) })
@@ -1122,6 +1164,7 @@ function C.stats(p, d)
 		links = d:row("SELECT count(*) FROM link"),
 		chunks = d:row("SELECT count(*) FROM chunk"),
 		pending = d:row("SELECT count(*) FROM job WHERE status = 'pending'"),
+		hidden = d:row("SELECT count(*) FROM doc WHERE hidden = 1"),
 		writes = tonumber((d:row("SELECT value FROM state "
 		    .. "WHERE key = 'gc.writes'"))) or 0,
 		free = d:row("PRAGMA freelist_count") * d:row("PRAGMA page_size"),
@@ -1129,7 +1172,7 @@ function C.stats(p, d)
 
 	out(p.opts, s, function(v)
 		local keys = { "docs", "versions", "files", "blocks", "bytes", "tags",
-		    "links", "chunks", "pending", "writes", "free" }
+		    "links", "chunks", "pending", "hidden", "writes", "free" }
 		local l = {}
 
 		for _, k in ipairs(keys) do

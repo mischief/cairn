@@ -93,7 +93,8 @@ end
 
 -- where clause and args for the filters, over doc d
 local function filters(d, f, opts)
-	local sql, args = { "d.hidden = 0" }, {}
+	-- hidden documents show only when asked for, and then only they do
+	local sql, args = { opts.hidden and "d.hidden = 1" or "d.hidden = 0" }, {}
 
 	if not opts.superseded then
 		sql[#sql + 1] = "d.superseded_by IS NULL"
@@ -235,6 +236,7 @@ function M.search(d, q, opts)
 	end
 
 	local match = M.fts(text)
+	local listed
 
 	-- FTS5 refuses some input, such as a lone "*"; read it as plain
 	-- words then, and list documents when no word is left
@@ -299,6 +301,7 @@ function M.search(d, q, opts)
 		    append(wargs, { limit, offset }))) do
 			hit(r)
 		end
+		listed = d:row("SELECT count(*) FROM doc d WHERE " .. where, wargs)
 		offset = 0
 	end
 
@@ -313,7 +316,7 @@ function M.search(d, q, opts)
 		h.score = tonumber(("%.4g"):format(-h.score))
 		out[#out + 1] = h
 	end
-	return out, #order
+	return out, listed or #order
 end
 
 -- visible tags with aliases resolved; a view over tag for the queries

@@ -796,6 +796,20 @@ end
 function M.attach(d, a)
 	local mime = a.mime or util.mimeof(a.name)
 
+	-- the same bytes again give back the document that holds them, so a
+	-- repeat download or a second import makes no second document
+	if not a.force then
+		local fc = cid.sha256(cid.RAW, a.data)
+		local have = d:rows("SELECT d.id, d.rev FROM doc d JOIN cid c "
+		    .. "ON c.id = d.content WHERE c.cid = ? "
+		    .. "ORDER BY d.hidden, d.superseded_by IS NOT NULL, d.updated DESC",
+		    { fc }, { true })[1]
+
+		if have then
+			return have.id, have.rev, fc, {}, true
+		end
+	end
+
 	if util.istext(mime) or mime:match("^text/") and mime ~= "text/html" then
 		local bad = secret.check(a.data)
 
