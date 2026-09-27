@@ -665,9 +665,12 @@ local function plan(p, d, name, model, vocab, now, blank)
 		end
 		return ids, count
 	end
-	if p.opts.tag then
+	-- the parser files --tag and -t into one list, opts.t
+	local tags = p.opts.t or (p.opts.tag and { p.opts.tag }) or {}
+
+	if #tags > 0 then
 		for _, h in ipairs((require("cairn.search").search(d, "",
-		    { tag = { p.opts.tag }, limit = 100000, max = 100000,
+		    { tag = tags, limit = 100000, max = 100000,
 		    chunks = 1 }))) do
 			cand[#cand + 1] = h.id
 		end

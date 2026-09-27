@@ -162,3 +162,33 @@ describe("experiments with a fake lgml", function()
 		assert.equal(1, chats())
 	end)
 end)
+
+describe("experiments --tag", function()
+	it("runs only on documents with the tag", function()
+		local saved = { client = lgml.client, available = lgml.available,
+		    print = _G.print }
+
+		lgml.client = function()
+			return fake
+		end
+		lgml.available = function()
+			return { array = function(t)
+				return t
+			end, json = { decode = cjson.decode } }
+		end
+		_G.print = function() end
+		calls = {}
+
+		local d = assert(db.open(":memory:"))
+
+		store.note(d, { title = "rsa", body = "ciphers", author = "k",
+		    tags = { "rfc" } })
+		store.note(d, { title = "tor", body = "onions", author = "k" })
+		x.main({ args = { "form" }, opts = { t = { "rfc" }, set = {} } }, d,
+		    ":memory:")
+		lgml.client, lgml.available = saved.client, saved.available
+		_G.print = saved.print
+		d:close()
+		assert.equal(1, #calls)
+	end)
+end)
