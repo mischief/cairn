@@ -587,10 +587,11 @@ function R.hits(v)
 			s[#s + 1] = ("    = %s\n"):format(h.abstract)
 		end
 		for _, c in ipairs(h.chunks or {}) do
-			-- a page for PDFs, the last heading for sectioned text
+			-- a page for PDFs, the last two headings for sectioned text,
+			-- so "stat(5) > NAME" says which page, where "NAME" would not
 			local at = c.page and ("p" .. c.page .. ": ")
-			    or c.heading and ("§ " .. (c.heading:match("([^>]+)$") or "")
-			    :gsub("^%s+", "") .. ": ") or ""
+			    or c.heading and ("§ " .. (c.heading:match("([^>]+>[^>]+)$")
+			    or c.heading):gsub("^%s+", "") .. ": ") or ""
 
 			s[#s + 1] = ("    %s%s\n"):format(at,
 			    (c.snippet:gsub("%s+", " ")))
