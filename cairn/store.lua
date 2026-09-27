@@ -191,7 +191,9 @@ end
 
 -- indextext(d, file, mime, text) indexes a text file inline
 function M.indextext(d, file, mime, text)
+	-- plain text with form feeds, such as an RFC, has pages
 	local chunks = mime == "text/markdown" and chunk.markdown(text)
+	    or text:find("\f", 1, true) and chunk.pages(text)
 	    or chunk.plain(text)
 
 	M.index(d, file, "text", "builtin", 1, chunks)

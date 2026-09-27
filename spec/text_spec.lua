@@ -217,3 +217,23 @@ describe("abstract index", function()
 		d:close()
 	end)
 end)
+
+describe("plain text with form feeds", function()
+	it("keeps pages and drops running heads", function()
+		local d = assert(db.open(":memory:"))
+		local pages = {}
+
+		for i, w in ipairs({ "alpha", "bravo", "charlie", "delta", "echo" }) do
+			pages[i] = ("RFC 9999   Example   July 2026\n\n%s section\n\n"
+			    .. "Author   Standards Track   [Page %d]"):format(w, i)
+		end
+
+		local id = store.attach(d, { data = table.concat(pages, "\f"),
+		    name = "rfc9999.txt", mime = "text/plain", author = "k" })
+		local text = require("cairn.cli").view(d, id, nil, nil, "p=3").text
+
+		assert.matches("charlie section", text)
+		assert.is_nil(text:find("Standards Track", 1, true))
+		d:close()
+	end)
+end)
