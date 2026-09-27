@@ -994,7 +994,67 @@ local function classify(c, model, v, state)
 			leaves[#leaves + 1] = t
 		end
 	end
-	return leaves, order, sug
+	return M.cap(v, leaves, istop), order, sug
+end
+
+-- most topics a document gets
+M.TOPICS = 6
+
+-- cap(v, leaves, istop) -> at most TOPICS leaves. Leaves that share a
+-- broader topic below the top give way to it, the largest group first;
+-- then the first ones picked stay.
+function M.cap(v, leaves, istop)
+	local up = {}
+
+	for p, chs in pairs(v.children) do
+		for _, ch in ipairs(chs) do
+			up[ch] = up[ch] or {}
+			up[ch][#up[ch] + 1] = p
+		end
+	end
+	while #leaves > M.TOPICS do
+		local groups = {}
+
+		for _, l in ipairs(leaves) do
+			for _, p in ipairs(up[l] or {}) do
+				if not istop[p] then
+					groups[p] = (groups[p] or 0) + 1
+				end
+			end
+		end
+
+		local best, n = nil, 1
+
+		for p, k in pairs(groups) do
+			if k > n or (k == n and best and p < best) then
+				best, n = p, k
+			end
+		end
+		if not best then
+			break
+		end
+
+		local out, put = {}, false
+
+		for _, l in ipairs(leaves) do
+			local under = false
+
+			for _, p in ipairs(up[l] or {}) do
+				under = under or p == best
+			end
+			if not under then
+				out[#out + 1] = l
+			elseif not put then
+				out[#out + 1] = best
+				put = true
+			end
+		end
+		leaves = out
+	end
+	while #leaves > M.TOPICS do
+		table.remove(leaves)
+	end
+	return leaves
 end
 
 M.list.topics = {

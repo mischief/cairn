@@ -108,3 +108,22 @@ describe("topic guard", function()
 		d:close()
 	end)
 end)
+
+describe("topic cap", function()
+	it("folds leaves into their shared broader topic", function()
+		local x = require "cairn.experiments"
+		local v = { children = {
+			["computer-science"] = { "programming-languages",
+			    "software-engineering", "computer-programming" },
+			["programming-languages"] = { "compilers", "assembly-languages" },
+			compilers = { "assemblers", "code-generation",
+			    "compiler-optimization", "linkers" },
+		} }
+		local got = x.cap(v, { "assemblers", "assembly-languages",
+		    "code-generation", "compiler-optimization", "computer-programming",
+		    "linkers", "software-engineering" }, { ["computer-science"] = true })
+
+		assert.same({ "compilers", "assembly-languages", "computer-programming",
+		    "software-engineering" }, got)
+	end)
+end)

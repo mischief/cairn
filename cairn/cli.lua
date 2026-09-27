@@ -51,7 +51,7 @@ WRITE A NOTE:
          cairn tags shows the scope note beside the tag.
   Topics: topic/NAME tags are general topics from a fixed list; cairn
          tags topic/ shows them with their scope notes. Tag a note
-         with the most specific topics that fit, 1 to 4. A search for
+         with the most specific topics that fit, at most 6. A search for
          tag:topic/security also finds topic/cryptography and the
          other topics under it. Do not make new topic/ tags; a new
          topic needs an about page with a scope note and skos.broader.
@@ -103,7 +103,7 @@ WHAT TO WRITE:
   - Facts, decisions and why, pitfalls, how parts fit together: what
     the next agent needs and cannot find with grep.
   - One subject per note and a title that says what it is.
-  - Tags: 1 to 4 topic/ tags (see Topics above), plus free tags that
+  - Tags: 1 to 6 topic/ tags (see Topics above), plus free tags that
     name specific things: projects, systems, products, chips,
     protocols, organizations (plan9, ipfs, esp32-c5, openai). Write
     them as people do, lowercase with hyphens, and reuse the spelling
