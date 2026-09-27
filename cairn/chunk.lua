@@ -32,7 +32,7 @@ function M.utf8(s)
 end
 
 -- clean(s) -> valid UTF-8 without NUL and other control bytes except
--- \t \n \f. A NUL cuts off FTS5 content.
+-- \t \n \f. A NUL ends FTS5 content early.
 function M.clean(s)
 	return (M.utf8(s):gsub("[%z\1-\8\11\13-\31\127]", ""))
 end

@@ -592,7 +592,7 @@ RETURNING id, file, kind;
   (`chat_template_kwargs: {"enable_thinking": false}`).
 - Chunks follow pages, or markdown headings, and stay under about 2000
   tokens. A chunk keeps its heading path for context.
-- NUL bytes are removed before indexing. A NUL cuts off FTS content.
+- NUL bytes are removed before indexing. A NUL ends FTS content early.
 - `pdftotext -layout` keeps tables readable but runs the columns of a
   two-column page together, line by line. A page where most long
   lines have one gap, lined up near the middle, is two columns of
