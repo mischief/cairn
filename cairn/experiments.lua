@@ -732,10 +732,11 @@ local function pick(c, model, v, cand, state, o)
 			    json_schema = { name = "topics", schema = schema } },
 			messages = { {
 				role = "user",
-				content = ("This is a list of topics, each with a note on "
-				    .. "what it covers:\n%s\n\n%s\n\n%s"):format(
-				    table.concat(lines, "\n"), table.concat(ask, "\n\n"),
-				    state),
+				-- the document comes first, so the calls for one document
+				-- share a prefix that lgml can reuse
+				content = ("%s\n\nThis is a list of topics, each with a note "
+				    .. "on what it covers:\n%s\n\n%s"):format(state,
+				    table.concat(lines, "\n"), table.concat(ask, "\n\n")),
 			} },
 		})
 		local text = r and r.choices and r.choices[1]
