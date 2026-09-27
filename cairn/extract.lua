@@ -8,14 +8,14 @@ local util = require "cairn.util"
 
 local M = {}
 
-M.VERSION = { pdf = 1, ocr = 1, vision = 1, transcript = 1, pandoc = 1 }
+M.VERSION = { pdf = 2, ocr = 1, vision = 1, transcript = 1, pandoc = 1 }
 
 -- commands each kind of job runs; ocr of a pdf also needs pdftoppm
 M.TOOLS = {
 	pdf = { "pdftotext" },
 	ocr = { "tesseract" },
 	pandoc = { "pandoc" },
-	vision = { "curl" },
+	vision = {},
 	transcript = { "ffmpeg", "curl" },
 }
 
@@ -82,12 +82,86 @@ local function b64(s)
 	return out .. ("="):rep((4 - #out % 4) % 4)
 end
 
+-- twocolumn(page) -> true when a page of pdftotext -layout output holds
+-- two columns of prose: most long lines have one gap, and the gaps line
+-- up near the middle. Tables have several gaps a line.
+function M.twocolumn(page)
+	local width = 0
+
+	for l in page:gmatch("[^\n]+") do
+		width = math.max(width, #l)
+	end
+	if width < 60 then
+		return false
+	end
+
+	local lo, hi = width * 3 // 10, width * 7 // 10
+	local lines, gaps, hits = 0, 0, {}
+
+	for l in page:gmatch("[^\n]+") do
+		if #l >= width * 0.6 then
+			local i = 1
+
+			lines = lines + 1
+			while true do
+				local s, e = l:find("%s%s%s+", i)
+
+				if not s then
+					break
+				end
+				if s > 1 and e < #l and l:sub(1, s - 1):find("%S") then
+					gaps = gaps + 1
+					for c = math.max(s, lo), math.min(e, hi) do
+						hits[c] = (hits[c] or 0) + 1
+					end
+				end
+				i = e + 1
+			end
+		end
+	end
+	if lines < 8 then
+		return false
+	end
+
+	local best = 0
+
+	for _, n in pairs(hits) do
+		best = math.max(best, n)
+	end
+	return best >= lines * 0.6 and gaps <= lines * 1.5
+end
+
 -- pdf(data, opts) -> chunks, needocr. needocr is true when the pdf
--- has no text layer.
+-- has no text layer. Layout mode keeps tables readable but runs the
+-- columns of a two-column page together, so those pages come from
+-- reading order instead.
 function M.pdf(data, opts)
 	return with(data, "application/pdf", function(path)
 		local text = run({ "pdftotext", "-layout", "-enc", "UTF-8", path,
 		    "-" }, opts)
+		local pages, twos = {}, false
+
+		for p in text:gmatch("([^\f]*)\f") do
+			pages[#pages + 1] = p
+			twos = twos or M.twocolumn(p)
+		end
+		if twos then
+			local flow, fp = run({ "pdftotext", "-enc", "UTF-8", path, "-" },
+			    opts), {}
+
+			for p in flow:gmatch("([^\f]*)\f") do
+				fp[#fp + 1] = p
+			end
+			if #fp == #pages then
+				for i, p in ipairs(pages) do
+					if M.twocolumn(p) then
+						pages[i] = fp[i]
+					end
+				end
+				text = table.concat(pages, "\f") .. "\f"
+			end
+		end
+
 		local chunks = chunk.pages(text)
 		local pages = select(2, text:gsub("\f", "")) + 0
 

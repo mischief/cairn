@@ -100,15 +100,104 @@ function M.markdown(s)
 	return out
 end
 
--- pages(s) -> chunks, one or more per form-feed separated page
+-- tidy(s) -> s without dot leaders, trailing blanks, or runs of empty
+-- lines
+function M.tidy(s)
+	return (s:gsub("[ ]*%.[ ]?%.[ ]?%.[ ]?%.[ ]?%.[%. ]*", " ... ")
+	    :gsub("[ \t]+\n", "\n"):gsub("[ \t]+$", ""):gsub("\n\n\n+", "\n\n"))
+end
+
+-- the lines at each end of a page where running heads and page
+-- numbers sit
+M.EDGE = 3
+
+-- edge(page) -> the line indexes of the first and last EDGE lines that
+-- hold text, and the lines
+local function edge(page)
+	local lines, full = {}, {}
+
+	for l in (page .. "\n"):gmatch("([^\n]*)\n") do
+		lines[#lines + 1] = l
+		if l:find("%S") then
+			full[#full + 1] = #lines
+		end
+	end
+
+	local at = {}
+
+	for i = 1, math.min(M.EDGE, #full) do
+		at[full[i]] = true
+		at[full[#full + 1 - i]] = true
+	end
+	return at, lines
+end
+
+-- a running line compares equal across pages with its page number
+local function norm(l)
+	return (l:gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s+", " ")
+	    :gsub("%d+", "#"))
+end
+
+-- running(pages) -> pages without running heads, running feet, and page
+-- numbers. A line counts as running when it sits at the edge of at
+-- least 3 pages and 30% of them. Short documents stay as they are.
+function M.running(pages)
+	if #pages < 4 then
+		return pages
+	end
+
+	local count = {}
+
+	for _, p in ipairs(pages) do
+		local at, lines = edge(p)
+		local seen = {}
+
+		for n in pairs(at) do
+			local k = norm(lines[n])
+
+			if not seen[k] then
+				seen[k] = true
+				count[k] = (count[k] or 0) + 1
+			end
+		end
+	end
+
+	local need = math.max(3, #pages * 0.3)
+	local out = {}
+
+	for i, p in ipairs(pages) do
+		local at, lines = edge(p)
+		local keep = {}
+
+		for n, l in ipairs(lines) do
+			local k = norm(l)
+
+			if not (at[n] and (count[k] >= need or k == "#"
+			    or k:match("^[ivx]+$") and #k <= 5)) then
+				keep[#keep + 1] = l
+			end
+		end
+		out[i] = table.concat(keep, "\n")
+	end
+	return out
+end
+
+-- pages(s) -> chunks, one or more per form-feed separated page, without
+-- running heads and feet
 function M.pages(s)
-	s = M.clean(s)
+	local list = {}
 
-	local out, n = {}, 0
+	for page in (M.clean(s) .. "\f"):gmatch("([^\f]*)\f") do
+		list[#list + 1] = page
+	end
+	if list[#list] == "" and #list > 1 then
+		list[#list] = nil
+	end
 
-	for page in (s .. "\f"):gmatch("([^\f]*)\f") do
-		n = n + 1
-		split(page, out, n, nil)
+	local out = {}
+
+	for n, page in ipairs(M.running(list)) do
+		split(M.tidy(page), out, n, nil)
 	end
 	return out
 end
