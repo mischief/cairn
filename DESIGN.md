@@ -32,7 +32,10 @@ fast subset of the same operations.
 
 - Lua 5.4.
 - lsqlite3 for the database, with FTS5.
-- luaossl for sha2-256 and random bytes.
+- luaossl, when installed, for fast sha2-256 and random bytes.
+  Without it cairn hashes in pure Lua (about 4 MB/s) and reads
+  /dev/urandom, so it installs where luaossl does not build, such as
+  OpenBSD with LibreSSL.
 - mcptk for the MCP stdio server.
 - External extractors run as commands: pdftotext, pdftoppm, tesseract,
   pandoc, ffmpeg.
@@ -233,6 +236,15 @@ filters do not decode DRISL. `tag` and `link` also come from the head
 node. They are indexes, not the source of truth. `doc.n` is an INTEGER
 PRIMARY KEY, so VACUUM does not renumber it, and the FTS tables use it
 as their rowid.
+
+The schema is in second normal form on purpose: `doc`, `doc_version`,
+`tag`, `link`, `meta`, `wanted`, and `doc_fts` repeat what the version
+nodes hold. The nodes are immutable and content-addressed, so they
+cannot disagree with themselves; a wrong copy is an index bug, not lost
+data. `cairn reindex --docs` rebuilds all these tables from the blocks
+alone: the head of each document is its highest-rev version node, and
+its history is the `prev` chain. `cairn fsck` compares every copy with
+its head node and reports each difference.
 
 A new version moves the head with a compare-and-swap:
 
@@ -605,8 +617,9 @@ document and mark the text as stored content, not instructions.
   secret stays forever.
 - Each author has a daily byte limit, so a looping agent cannot fill
   the disk.
-- `cairn fsck` hashes every block again, checks `ref`, and runs the FTS5
-  `integrity-check` command on each FTS table.
+- `cairn fsck` hashes every block again, checks `ref`, runs the FTS5
+  `integrity-check` command on each FTS table, and compares the index
+  tables with the head nodes.
 
 ## Commands
 
@@ -630,6 +643,7 @@ document and mark the text as stored content, not instructions.
 | `cairn recent [--since t] [--author a]` | recent versions |
 | `cairn alias <alias> <tag>` | add a tag alias |
 | `cairn reindex [--kind k]` | queue extraction again |
+| `cairn reindex --docs` | rebuild every index table from the blocks |
 | `cairn fsck` | check the database |
 | `cairn backup <file>` | `VACUUM INTO` a copy |
 | `cairn vacuum` | give free pages back to the disk |

@@ -179,8 +179,10 @@ end
 -- when it ran.
 function M.autogc(d)
 	local limit = config.number(d, "gc.auto") or 0
-	local writes = tonumber(d:row("SELECT value FROM state "
-	    .. "WHERE key = 'gc.writes'")) or 0
+	-- the parentheses matter: no row gives no values, and tonumber()
+	-- with no argument raises
+	local writes = tonumber((d:row("SELECT value FROM state "
+	    .. "WHERE key = 'gc.writes'"))) or 0
 
 	if limit == 0 or writes < limit then
 		return false

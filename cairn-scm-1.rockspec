@@ -27,7 +27,6 @@ dependencies = {
   'lua >= 5.4',
   'lsqlite3',
   'luaposix',
-  'luaossl',
   'mcptk >= 0.1',
 }
 
@@ -39,6 +38,7 @@ build = {
     ['cairn.cli'] = 'cairn/cli.lua',
     ['cairn.config'] = 'cairn/config.lua',
     ['cairn.db'] = 'cairn/db.lua',
+    ['cairn.derive'] = 'cairn/derive.lua',
     ['cairn.drisl'] = 'cairn/drisl.lua',
     ['cairn.enrich'] = 'cairn/enrich.lua',
     ['cairn.extract'] = 'cairn/extract.lua',
@@ -48,6 +48,7 @@ build = {
     ['cairn.queue'] = 'cairn/queue.lua',
     ['cairn.schema'] = 'cairn/schema.lua',
     ['cairn.search'] = 'cairn/search.lua',
+    ['cairn.sha256'] = 'cairn/sha256.lua',
     ['cairn.secret'] = 'cairn/secret.lua',
     ['cairn.store'] = 'cairn/store.lua',
     ['cairn.tags'] = 'cairn/tags.lua',

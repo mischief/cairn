@@ -19,7 +19,7 @@
 -- (base64 and base64url, no padding). A 46-character "Qm..." string is
 -- a CIDv0 in implicit base58btc.
 
-local digest = require "openssl.digest"
+local sha256 = require "cairn.sha256"
 
 local M = {}
 
@@ -85,7 +85,7 @@ end
 
 -- sha256(codec, data) -> binary CIDv1 of data under sha2-256.
 function M.sha256(codec, data)
-	return M.encode(codec, M.SHA2_256, digest.new("sha256"):final(data))
+	return M.encode(codec, M.SHA2_256, sha256.sum(data))
 end
 
 -- a CID whose content is the bytes themselves.

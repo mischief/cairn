@@ -1,11 +1,26 @@
 -- SPDX-License-Identifier: ISC
 -- util: time, ids, and file helpers shared by the other modules.
 
-local rand = require "openssl.rand"
-
 local cid = require "cairn.cid"
 
 local M = {}
+
+-- random(n) -> n random bytes, from luaossl when it is installed, else
+-- from /dev/urandom
+local function random(n)
+	local ok, rand = pcall(require, "openssl.rand")
+
+	if ok then
+		return rand.bytes(n)
+	end
+
+	local f = assert(io.open("/dev/urandom", "rb"))
+	local s = f:read(n)
+
+	f:close()
+	assert(s and #s == n, "short read from /dev/urandom")
+	return s
+end
 
 -- now() -> RFC 3339 UTC, fixed width, so text order is time order
 function M.now(t)
@@ -18,7 +33,7 @@ end
 
 -- newid() -> 16 characters of lowercase base32 over 10 random bytes
 function M.newid()
-	return cid.bases.b.enc(rand.bytes(10))
+	return cid.bases.b.enc(random(10))
 end
 
 function M.isid(s)

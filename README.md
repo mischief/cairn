@@ -54,8 +54,9 @@ Search filters on it: `date:<1990`, `creator:intel`,
 ## Requirements
 
 Lua 5.4, lsqlite3 (SQLite 3.35 or later, with FTS5), luaposix,
-luaossl, mcptk. Extraction uses pdftotext, pdftoppm, tesseract,
-pandoc, ffmpeg, and curl when they are installed.
+mcptk. luaossl is optional: with it, hashing is fast; without it,
+cairn hashes in pure Lua. Extraction uses pdftotext, pdftoppm,
+tesseract, pandoc, ffmpeg, and curl when they are installed.
 
 ## Install
 

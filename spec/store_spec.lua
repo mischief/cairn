@@ -186,3 +186,23 @@ describe("store", function()
 		assert.same({ "datasheet" }, close)
 	end)
 end)
+
+describe("search chunks", function()
+	it("returns the best few passages of each document", function()
+		local d = assert(db.open(":memory:"))
+		local body = {}
+
+		for i = 1, 5 do
+			body[#body + 1] = "# part " .. i .. "\nvirtqueue text " .. i
+		end
+		store.note(d, { title = "spec", body = table.concat(body, "\n"),
+		    author = "kbd" })
+
+		local h = search.search(d, "virtqueue")[1]
+
+		assert.equal(3, #h.chunks)
+		assert.equal(5, #search.search(d, "virtqueue", { chunks = 9 })[1].chunks)
+		assert.equal(1, #search.search(d, "virtqueue", { chunks = 1 })[1].chunks)
+		d:close()
+	end)
+end)

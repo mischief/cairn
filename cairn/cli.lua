@@ -103,7 +103,9 @@ usage: cairn [-d db] [--json] command [args]
   attach <file> [-t tag]... [--title t]  store a file, queue extraction
   enrich [--vision] [--model m] [--max n] [--retry-failed]
                                     drain the extraction queue
-  search <query> [--all] [--limit n]  search; tag: mime: author: since:
+  search <query> [--all] [--limit n] [--chunks n]
+                                    search; tag: mime: author: since:
+                                    shows n passages per document (3)
   get <id|cid|uri> [--rev n] [--page n] [--at p=N|text]
                                     show a document
   cat <id|cid> [out]                write the file bytes
@@ -119,6 +121,7 @@ usage: cairn [-d db] [--json] command [args]
   recent [--since t] [--author a]   recent versions
   alias <alias> <tag>               add a tag alias
   reindex [--kind k]                queue extraction again
+  reindex --docs                    rebuild every index from the blocks
   status                            queue counts
   fsck                              check the database
   backup <file>                     VACUUM INTO a copy
@@ -139,7 +142,7 @@ env: CAIRN_DB (default $XDG_DATA_HOME/cairn/cairn.db), CAIRN_AUTHOR
 -- options collect into lists.
 local LISTS = { t = true, tag = true }
 local FLAGS = { json = true, vision = true, all = true, remove = true,
-    ["from-file"] = true, ["dry-run"] = true,
+    ["from-file"] = true, ["dry-run"] = true, docs = true,
     unset = true,
     ["retry-failed"] = true, help = true, h = true }
 
@@ -596,19 +599,20 @@ function C.search(p, d)
 	local hits, total = search.search(d, q, { tag = p.opts.t,
 	    superseded = p.opts.all,
 	    limit = math.tointeger(tonumber(p.opts.limit)),
-	    offset = math.tointeger(tonumber(p.opts.offset)) })
+	    offset = math.tointeger(tonumber(p.opts.offset)),
+	    chunks = math.tointeger(tonumber(p.opts.chunks)) })
 
 	out(p.opts, { hits = hits, total = total }, function(v)
 		local s = {}
 
 		for _, h in ipairs(v.hits) do
-			s[#s + 1] = ("%s  %s  (%s, %s)%s\n"):format(h.uri, h.title,
-			    h.author or "?", h.updated:sub(1, 10),
+			s[#s + 1] = ("%s  %s  (%s, %s)%s\n"):format(store.uri(h.id),
+			    h.title, h.author or "?", h.updated:sub(1, 10),
 			    h.pending and "  text pending" or "")
-			if h.snippet then
-				s[#s + 1] = ("    %s%s\n"):format(h.page
-				    and ("p" .. h.page .. ": ") or "",
-				    h.snippet:gsub("%s+", " "))
+			for _, c in ipairs(h.chunks or {}) do
+				s[#s + 1] = ("    %s%s\n"):format(c.page
+				    and ("p" .. c.page .. ": ") or "",
+				    (c.snippet:gsub("%s+", " ")))
 			end
 		end
 		s[#s + 1] = ("%d of %d\n"):format(#v.hits, v.total)
@@ -832,6 +836,12 @@ function C.alias(p, d)
 end
 
 function C.reindex(p, d)
+	if p.opts.docs then
+		print(("%d documents rebuilt from their version nodes"):format(
+		    require("cairn.derive").rebuild(d)))
+		return
+	end
+
 	local n = queue.requeue(d, p.opts.kind)
 	local t = 0
 
@@ -898,6 +908,9 @@ function C.fsck(p, d)
 	for _, r in ipairs(d:rows("PRAGMA foreign_key_check")) do
 		problems[#problems + 1] = "foreign key: " .. r.table
 	end
+	for _, s in ipairs(require("cairn.derive").check(d)) do
+		problems[#problems + 1] = s
+	end
 	print(("%d blocks checked"):format(blocks))
 	for _, s in ipairs(problems) do
 		print(s)
@@ -952,8 +965,8 @@ function C.stats(p, d)
 		links = d:row("SELECT count(*) FROM link"),
 		chunks = d:row("SELECT count(*) FROM chunk"),
 		pending = d:row("SELECT count(*) FROM job WHERE status = 'pending'"),
-		writes = tonumber(d:row("SELECT value FROM state "
-		    .. "WHERE key = 'gc.writes'")) or 0,
+		writes = tonumber((d:row("SELECT value FROM state "
+		    .. "WHERE key = 'gc.writes'"))) or 0,
 		free = d:row("PRAGMA freelist_count") * d:row("PRAGMA page_size"),
 	}
 

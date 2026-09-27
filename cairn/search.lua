@@ -10,6 +10,10 @@ local M = {}
 M.LIMIT = 10
 M.MAXLIMIT = 50
 
+-- matching chunks returned for each document
+M.CHUNKS = 3
+M.MAXCHUNKS = 10
+
 local FILTERS = { tag = true, mime = true, author = true, since = true,
     meta = true, date = true, creator = true }
 
@@ -212,6 +216,7 @@ function M.search(d, q, opts)
 	end
 
 	local limit = math.min(opts.limit or M.LIMIT, M.MAXLIMIT)
+	local per = math.max(1, math.min(opts.chunks or M.CHUNKS, M.MAXCHUNKS))
 	local offset = opts.offset or 0
 	local where, wargs = filters(d, f, opts)
 	local hits, order = {}, {}
@@ -254,9 +259,17 @@ function M.search(d, q, opts)
 		    and #text >= 3 then
 			chunks = M.scan(d, text, where, wargs)
 		end
+		-- chunks come best first; each document keeps its best few, so a
+		-- table of contents and the section it points to both show
 		for _, r in ipairs(chunks) do
 			local h = hit(r)
 
+			h.chunks = h.chunks or {}
+			if #h.chunks < per then
+				h.chunks[#h.chunks + 1] = { page = r.page,
+				    heading = r.heading, snippet = r.snip,
+				    uri = store.uri(h.id, nil, r.page and ("p=" .. r.page)) }
+			end
 			if not h.best or r.s < h.best then
 				h.best = r.s
 				h.snippet = r.snip

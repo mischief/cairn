@@ -107,12 +107,14 @@ function M.tools(d, path, author)
 			superseded = mcptk.bool{ default = false,
 			    desc = "include superseded documents" },
 			limit = mcptk.int{ default = 10, min = 1, max = 50 },
+			chunks = mcptk.int{ default = 3, min = 1, max = 10,
+			    desc = "matching passages to return per document" },
 			offset = mcptk.int{ default = 0, min = 0 },
 		},
 		run = function(a)
 			local hits, total = search.search(d, a.query, { tag = a.tags,
 			    superseded = a.superseded, limit = a.limit,
-			    offset = a.offset })
+			    offset = a.offset, chunks = a.chunks })
 
 			return { hits = hits, total = total, note = M.DATA }
 		end,

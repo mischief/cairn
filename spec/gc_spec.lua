@@ -76,3 +76,12 @@ describe("autogc", function()
 		d:close()
 	end)
 end)
+
+describe("autogc on a new database", function()
+	it("works before the first write", function()
+		local d = assert(db.open(":memory:"))
+
+		assert.is_false(store.autogc(d))
+		d:close()
+	end)
+end)
