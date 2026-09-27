@@ -142,3 +142,17 @@ describe("close tags", function()
 		d:close()
 	end)
 end)
+
+describe("expand clean", function()
+	it("splits bullets, keeps hyphenated words, drops markup", function()
+		local x = require "cairn.experiments"
+
+		assert.same({ "symmetric multiprocessor", "interrupt-driven waits",
+		    "test-and-set" }, x.clean({ "- symmetric multiprocessor- "
+		    .. "interrupt-driven waits- test-and-set" }, 80))
+		assert.same({ "rendezvous" }, x.clean({ "rendezvous", "] ,",
+		    "see ```json {" }, 80))
+		assert.same({ "How does it to handle interrupts?" },
+		    x.clean({ "How does it to to handle interrupts?" }, 200))
+	end)
+end)

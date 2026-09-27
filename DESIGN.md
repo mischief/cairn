@@ -813,7 +813,7 @@ call a model.
 | `form [ID... \| --all] [--apply]` | picks each document's form from the list in `cairn/vocab.lua` with one chat call; keeps a form a person set; `--apply` writes `dcterms.type` with `gen.type` and drops form tags |
 | `topics [ID... \| --all] [--apply]` | picks each document's topics by walking down the topic hierarchy (see below) |
 | `similar [--top n] [--force]` | embeds each document once, as the mean of up to 48 of its chunks, and stores its nearest documents as rows |
-| `expand ID... \| --all` | writes search terms and questions per chunk and indexes them |
+| `expand ID... \| --all [--apply]` | parked: writes search terms and questions per chunk; a dry run prints them, `--apply` indexes them. About 120 words a page is too much extra text for what it adds, so no document holds any |
 | `summarize [ID... \| --stale \| --all] [--apply]` | writes a 2-sentence `dcterms.abstract` from the start and the middle of each document; the receipt holds a hash of the abstract, so an edited abstract is left alone; search shows its first sentence under a hit |
 
 The experiments call lgml through lgml-client, which is optional: cairn

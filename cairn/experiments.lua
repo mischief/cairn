@@ -467,31 +467,67 @@ M.EXPAND = "Write what a reader might type into a search box to find this "
     .. "related concepts, and the names of registers, functions, fields, "
     .. "or commands it covers; then up to 4 questions the passage "
     .. "answers. Use words that are not already in the passage where you "
-    .. "can."
+    .. "can. Answer as JSON: {\"terms\": [\"...\", \"...\"], "
+    .. "\"questions\": [\"...?\"]}, one term or question a string."
+
 
 M.SCHEMA = {
 	type = "object",
+	additionalProperties = false,
 	properties = {
-		terms = { type = "array", items = { type = "string" }, maxItems = 24 },
-		questions = { type = "array", items = { type = "string" },
-		    maxItems = 4 },
+		-- a bounded pattern caps each string; lgml ignores maxLength when
+		-- a pattern is present
+		terms = { type = "array", minItems = 3, maxItems = 16,
+		    items = { type = "string", pattern = "^[^\\[\\]{}`<>]{2,80}$" } },
+		questions = { type = "array", minItems = 1, maxItems = 4,
+		    items = { type = "string", pattern = "^[^\\[\\]{}`<>]{8,200}$" } },
 	},
 	required = { "terms", "questions" },
 }
 
+-- clean(list, max) -> the strings of list a model got right: bullets
+-- split apart, markup and runaway text dropped, words doubled by a slip
+-- ("to to") made single
+function M.clean(list, max)
+	local out = {}
+
+	for _, s in ipairs(type(list) == "table" and list or {}) do
+		if type(s) == "string" then
+			-- a bullet is a hyphen before a space; "test-and-set" stays
+			for part in (s:gsub("%-%s+", "\0") .. "\0"):gmatch("([^%z]*)%z") do
+				part = part:gsub("^%s+", ""):gsub("%s+$", "")
+				part = part:gsub("%f[%w](%w+) %1%f[%W]", "%1")
+				if #part >= 2 and #part <= max and not part:find("[][{}`<>]")
+				    and not part:lower():find("json", 1, true) then
+					out[#out + 1] = part
+				end
+			end
+		end
+	end
+	return out
+end
+
 M.list.expand = {
-	usage = "expand ID... | --all [--model m] [--force]",
-	desc = "write search terms and questions per chunk with a model, and "
-	    .. "index them",
+	usage = "expand ID... | --all [--apply] [--model m] [--force]",
+	desc = "write search terms and questions per chunk with a model; a dry "
+	    .. "run prints them, --apply indexes them",
 	run = function(p, d)
 		local lgml = require "cairn.lgml"
 		local store = require "cairn.store"
+		local client = lgml.available()
 		local model = p.opts.model or config.get(d, "lgml.decide")
 
 		if #p.args == 0 and not p.opts.all then
 			error("expand costs a model call per chunk: name documents, "
 			    .. "or give --all", 0)
 		end
+
+		local schema = {}
+
+		for k, v in pairs(M.SCHEMA) do
+			schema[k] = v
+		end
+		schema.required = client.array(M.SCHEMA.required)
 
 		local c = lgml.client(d, { timeout = 900 })
 		local t0 = os.time()
@@ -506,13 +542,18 @@ M.list.expand = {
 			if row.content and (p.opts.force or not done) then
 				local out = {}
 
+				print(("== %s  %s"):format(id, row.title))
 				for i, ch in ipairs(filechunks(d, row.content, "expand")) do
+					-- greedy decoding loops on open lists; some randomness
+					-- with a presence penalty keeps the terms varied
 					local text = lgml.chat(c, {
 						model = model,
 						max_tokens = 400,
+						temperature = 0.4,
+						presence_penalty = 0.5,
 						chat_template_kwargs = { enable_thinking = false },
 						response_format = { type = "json_schema",
-						    json_schema = { schema = M.SCHEMA } },
+						    json_schema = { name = "expand", schema = schema } },
 						messages = { {
 							role = "user",
 							content = M.EXPAND .. "\n\nDocument: " .. row.title
@@ -522,28 +563,34 @@ M.list.expand = {
 							    6000)),
 						} },
 					})
-					local ok, r = pcall(require("lgml.client").json.decode,
-					    text)
+					local ok, r = pcall(client.json.decode, text)
 
 					if ok and type(r) == "table" then
-						out[#out + 1] = { page = ch.page, heading = ch.heading,
-						    body = "terms: " .. table.concat(r.terms or {},
-						    "; ") .. "\nquestions: " .. table.concat(
-						    r.questions or {}, " ") }
-					end
-					if i % 10 == 0 then
-						io.stderr:write(("%s: %d chunks, %d s\n"):format(
-						    row.title:sub(1, 40), i, os.time() - t0))
+						local terms = M.clean(r.terms, 80)
+						local qs = M.clean(r.questions, 200)
+
+						if #terms + #qs > 0 then
+							local body = "terms: " .. table.concat(terms, "; ")
+							    .. "\nquestions: " .. table.concat(qs, " ")
+
+							out[#out + 1] = { page = ch.page,
+							    heading = ch.heading, body = body }
+							print(("  %s\n    %s"):format(ch.page and ("p"
+							    .. ch.page) or ch.heading or ("#" .. i),
+							    body:gsub("\n", "\n    ")))
+						end
 					end
 				end
-				store.index(d, row.content, "expand", "lgml:" .. model, 1, out)
+				if p.opts.apply then
+					store.index(d, row.content, "expand", "lgml:" .. model, 1,
+					    out)
+				end
 				total = total + #out
-				print(("%s  %d chunks expanded"):format(row.title:sub(1, 60),
-				    #out))
 			end
 		end
 		c:close()
-		print(("%d chunks, %d s"):format(total, os.time() - t0))
+		print(("%d chunks, %d s; %s"):format(total, os.time() - t0,
+		    p.opts.apply and "indexed" or "dry run; --apply indexes them"))
 	end,
 }
 
