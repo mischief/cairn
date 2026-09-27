@@ -634,7 +634,7 @@ end
 local receipt = require "cairn.receipt"
 
 -- classifier versions; raising one makes earlier receipts old
-M.VERSION = { form = 2, topics = 3, abstract = 1 }
+M.VERSION = { form = 2, topics = 4, abstract = 1 }
 
 -- state(d, name, w, model, vocab, now, blank) -> the receipt state of
 -- version w for classifier name. now(w) is what w holds today; without
@@ -1027,11 +1027,14 @@ local function pick(c, model, v, cand, state, o)
 		for _, t in ipairs(o.above) do
 			ab[#ab + 1] = ("%s (%s)"):format(t, v.label[t])
 		end
+		-- the first step down from a top topic must go somewhere; below
+		-- that, a narrower topic has to earn its place
 		ask[#ask + 1] = ("This document is about %s. The list holds the "
 		    .. "narrower topics under those. In topics, pick up to %d that "
-		    .. "fit the document. Most documents fit at least one; pick "
-		    .. "none only when no topic in the list fits at all.")
-		    :format(table.concat(ab, ", "), o.max)
+		    .. "fit the document. %s"):format(table.concat(ab, ", "), o.max,
+		    o.min > 0 and "Pick at least one." or "Pick a narrower topic "
+		    .. "only when it is a main subject of the document; pick none "
+		    .. "when the broader topics already say it.")
 	else
 		ask[#ask + 1] = ("In topics, pick %d to %d from the list.")
 		    :format(o.min, o.max)
