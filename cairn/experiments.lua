@@ -1418,6 +1418,35 @@ M.list.summarize = {
 	end,
 }
 
+-- the classifiers update runs, in order
+M.UPDATE = { "form", "topics", "summarize" }
+
+M.list.update = {
+	usage = "update [--apply] [--stale] [--tag t]",
+	desc = "run form, topics, and summarize on new and changed documents, "
+	    .. "then similar; a dry run prints what they would write",
+	run = function(p, d, path)
+		for _, name in ipairs(M.UPDATE) do
+			print("== " .. name)
+
+			-- one classifier failing, such as topics with no topic list,
+			-- does not stop the others
+			local ok, err = pcall(M.list[name].run, { args = {},
+			    opts = p.opts }, d, path)
+
+			if not ok then
+				print(("%s: %s"):format(name, tostring(err)))
+			end
+		end
+		print("== similar")
+		if p.opts.apply then
+			M.list.similar.run({ args = {}, opts = {} }, d, path)
+		else
+			print("similar writes vectors; it runs with --apply")
+		end
+	end,
+}
+
 M.list.status = {
 	usage = "status",
 	desc = "count documents by receipt state for form, topics, and "

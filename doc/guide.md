@@ -242,6 +242,7 @@ Add a file:
         --set dcterms.date=2026-09 --set dcterms.creator=Intel \
         --set dcterms.rights=non-free
     cairn enrich
+    cairn experiments update --apply    # form, topics, abstract, similar
 
 A good note:
 
@@ -343,6 +344,7 @@ run when asked. Most do a dry run by default and write with `--apply`.
 | `similar` | embeds each document and stores its nearest documents |
 | `expand` | writes search terms for each chunk |
 | `summarize` | writes a 2-sentence abstract of each document |
+| `update` | runs form, topics, and summarize on new and changed documents, then similar |
 
 `form`, `topics`, and `summarize` leave a receipt on each document they change: a
 `gen.form` or `gen.topics` key with the classifier version, the model,
@@ -359,6 +361,7 @@ later run what to do:
 | current | nothing changed | with `--all` |
 
     cairn experiments status                  # counts by state
+    cairn experiments update --apply          # all classifiers, new and changed
     cairn experiments topics --apply          # new and changed only
     cairn experiments topics --stale --tag topic/security --apply
 

@@ -814,6 +814,7 @@ call a model.
 | `topics [ID... \| --all] [--apply]` | picks each document's topics by walking down the topic hierarchy (see below) |
 | `similar [--top n] [--force]` | embeds each document once, as the mean of up to 48 of its chunks, and stores its nearest documents as rows |
 | `expand ID... \| --all [--apply]` | parked: writes search terms and questions per chunk; a dry run prints them, `--apply` indexes them. About 120 words a page is too much extra text for what it adds, so no document holds any |
+| `update [--apply] [--stale] [--tag t]` | runs form, topics, and summarize on new and changed documents, then similar; one failing does not stop the others |
 | `summarize [ID... \| --stale \| --all] [--apply]` | writes a 2-sentence `dcterms.abstract` from the start and the middle of each document; the receipt holds a hash of the abstract, so an edited abstract is left alone; search shows its first sentence under a hit |
 
 The experiments call lgml through lgml-client, which is optional: cairn
