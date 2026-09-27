@@ -116,3 +116,39 @@ describe("about pages in search", function()
 		d:close()
 	end)
 end)
+
+describe("search depth", function()
+	it("ranks a document with the words on many pages first", function()
+		local search = require "cairn.search"
+		local d = assert(db.open(":memory:"))
+		local short = store.attach(d, { data = "%PDF short", name = "s.pdf",
+		    author = "k", title = "slides" })
+		local long = store.attach(d, { data = "%PDF long", name = "l.pdf",
+		    author = "k", title = "manual" })
+		local pages = {}
+
+		-- each page its own words, or they read as running heads
+		for i, w in ipairs({ "allocator", "seed", "memory", "errors",
+		    "threads", "hooks" }) do
+			pages[i] = ("zetaframe and the %s: how the %s works with a new "
+			    .. "state, and what to check"):format(w, w)
+		end
+		store.index(d, store.doc(d, short).content, "pdf", "pdftotext", 1,
+		    chunk.pages("creating a state: call zetaframe, open the "
+		    .. "modules, and close it when done\f"))
+		store.index(d, store.doc(d, long).content, "pdf", "pdftotext", 1,
+		    chunk.pages(table.concat(pages, "\f")))
+		-- other text, so the word is rare as in a real store
+		local other = store.attach(d, { data = "%PDF other", name = "o.pdf",
+		    author = "k", title = "other" })
+		local rest = {}
+
+		for i = 1, 60 do
+			rest[i] = ("unrelated page %d about disks and networks"):format(i)
+		end
+		store.index(d, store.doc(d, other).content, "pdf", "pdftotext", 1,
+		    chunk.pages(table.concat(rest, "\f")))
+		assert.equal(long, search.search(d, "zetaframe")[1].id)
+		d:close()
+	end)
+end)

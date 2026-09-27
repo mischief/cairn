@@ -301,9 +301,16 @@ function M.search(d, q, opts)
 				h.page = r.page
 				h.heading = r.heading
 			end
+			-- chunks arrive best first; the next two count a quarter
+			-- and an eighth, so a document that treats the words in depth
+			-- beats a short one that names them once
+			h.seen = (h.seen or 0) + 1
+			if h.seen == 2 or h.seen == 3 then
+				h.depth = (h.depth or 0) + r.s / (2 ^ h.seen)
+			end
 		end
 		for _, h in ipairs(order) do
-			h.score = h.score + (h.best or 0)
+			h.score = h.score + (h.best or 0) + (h.depth or 0)
 		end
 		table.sort(order, function(a, b)
 			if a.score ~= b.score then
