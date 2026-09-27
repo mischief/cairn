@@ -671,10 +671,19 @@ returns, `attach` with a background `cairn enrich`, and what is worth
 writing. The instructions name the full path of the command when it is
 not on PATH.
 
+Every tool answers in plain text, the same lines the CLI prints, not a
+JSON string: an agent reads lines, and JSON with escaped newlines
+costs twice the tokens for less. `get` shows 4000 characters of text by
+default (`chars` up to 16000) with a hint for the next page, and hides
+the raw `pdf.*` and `jev.*` keys unless `meta` is true. A `get` of a
+large PDF went from 35 KB to under 5 KB this way. Tools take an empty
+string argument as not given, since some clients send `""` for an
+argument they leave out.
+
 | tool | arguments | returns |
 | --- | --- | --- |
 | search | query, tag?, mime?, superseded?, limit?, offset? | id, title, snippet, page, score, author, updated |
-| get | id, CID, or cairn: URI; rev?, page? | node fields, links with change marks, one page of text |
+| get | id, CID, or cairn: URI; rev?, page?, chars?, meta? | fields, dcterms metadata, links with change marks, one page of text |
 | put | title, body, tags?, links? | id, rev, cid, near duplicates, close tags |
 | edit | id, rev, op (append, replace, str_replace), ... | id, new rev, cid |
 | tag | id, add?, remove? | new rev |

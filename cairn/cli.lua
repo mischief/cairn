@@ -106,7 +106,7 @@ usage: cairn [-d db] [--json] command [args]
   search <query> [--all] [--limit n] [--chunks n]
                                     search; tag: mime: author: since:
                                     shows n passages per document (3)
-  get <id|cid|uri> [--rev n] [--page n] [--at p=N|text]
+  get <id|cid|uri> [--rev n] [--page n] [--at p=N|text] [--meta]
                                     show a document
   cat <id|cid> [out]                write the file bytes
   tag <id> [+tag|-tag]...           change tags
@@ -142,7 +142,7 @@ env: CAIRN_DB (default $XDG_DATA_HOME/cairn/cairn.db), CAIRN_AUTHOR
 -- options collect into lists.
 local LISTS = { t = true, tag = true }
 local FLAGS = { json = true, vision = true, all = true, remove = true,
-    ["from-file"] = true, ["dry-run"] = true, docs = true,
+    ["from-file"] = true, ["dry-run"] = true, docs = true, meta = true,
     unset = true,
     ["retry-failed"] = true, help = true, h = true }
 
@@ -340,9 +340,10 @@ local function join(list)
 	return table.concat(list or {}, ", ")
 end
 
--- view(d, id, rev, page, frag) -> table describing one document. frag
--- limits the text to one page ("p=12") or to headings holding frag.
-function M.view(d, id, rev, page, frag)
+-- view(d, id, rev, page, frag, size) -> table describing one document.
+-- frag limits the text to one page ("p=12") or to headings holding
+-- frag. size is the characters of text per page, 16000 by default.
+function M.view(d, id, rev, page, frag, size)
 	local cur = store.doc(d, id)
 
 	if not cur then
@@ -417,7 +418,7 @@ function M.view(d, id, rev, page, frag)
 		end
 
 		local text = table.concat(parts, "\n\n")
-		local size = 16000
+		size = size or 16000
 
 		page = page or 1
 		v.pages = math.max(1, (#text + size - 1) // size)
@@ -427,7 +428,15 @@ function M.view(d, id, rev, page, frag)
 	return v
 end
 
-local function showdoc(v)
+-- render: plain text for each result, shared by the CLI and MCP
+M.render = {}
+
+local R = M.render
+
+-- metadata namespaces that R.doc leaves out unless allmeta is set
+local QUIET = { pdf = true, jev = true }
+
+local function showdoc(v, allmeta)
 	local l = {
 		("%s  %s  rev %d\n"):format(v.id, v.title, v.rev),
 		("cid %s  by %s  %s\n"):format(v.cid, v.author, v.created),
@@ -443,8 +452,14 @@ local function showdoc(v)
 	end
 	local keys = {}
 
+	local quiet = 0
+
 	for k in pairs(v.meta or {}) do
-		keys[#keys + 1] = k
+		if allmeta or not QUIET[k:match("^([^.]+)")] then
+			keys[#keys + 1] = k
+		else
+			quiet = quiet + 1
+		end
 	end
 	table.sort(keys)
 	for _, k in ipairs(keys) do
@@ -452,6 +467,9 @@ local function showdoc(v)
 
 		l[#l + 1] = ("%s = %s\n"):format(k, type(x) == "table"
 		    and table.concat(x, "; ") or x)
+	end
+	if quiet > 0 then
+		l[#l + 1] = ("(%d pdf.* and jev.* keys not shown)\n"):format(quiet)
 	end
 	if v.about then
 		l[#l + 1] = "about page for tag " .. v.about .. "\n"
@@ -483,10 +501,113 @@ local function showdoc(v)
 	if v.text then
 		l[#l + 1] = ("\n%s\n"):format(v.text)
 		if v.pages > 1 then
-			l[#l + 1] = ("\n[page %d of %d]\n"):format(v.page, v.pages)
+			l[#l + 1] = ("\n[page %d of %d; ask for page %d for more, or "
+			    .. "at p=N for one PDF page]\n"):format(v.page, v.pages,
+			    math.min(v.page + 1, v.pages))
 		end
 	end
 	return table.concat(l)
+end
+
+R.doc = showdoc
+
+function R.hits(v)
+	local s = {}
+
+	for _, h in ipairs(v.hits) do
+		s[#s + 1] = ("%s  %s  (%s, %s)%s\n"):format(store.uri(h.id),
+		    h.title, h.author or "?", h.updated:sub(1, 10),
+		    h.pending and "  text pending" or "")
+		for _, c in ipairs(h.chunks or {}) do
+			s[#s + 1] = ("    %s%s\n"):format(c.page
+			    and ("p" .. c.page .. ": ") or "",
+			    (c.snippet:gsub("%s+", " ")))
+		end
+	end
+	s[#s + 1] = ("%d of %d\n"):format(#v.hits, v.total)
+	return table.concat(s)
+end
+
+function R.tags(rows)
+	local s = {}
+
+	for _, r in ipairs(rows) do
+		local depth = select(2, r.name:gsub("/", ""))
+
+		s[#s + 1] = ("%s%s  %d%s%s\n"):format(("  "):rep(depth), r.name,
+		    r.count, #r.with > 0 and ("  with " .. join(r.with)) or "",
+		    r.about and ("  about " .. r.about) or "")
+	end
+	return #s > 0 and table.concat(s) or "no tags\n"
+end
+
+function R.meta(t)
+	local keys, s = {}, {}
+
+	for k in pairs(t) do
+		keys[#keys + 1] = k
+	end
+	table.sort(keys)
+	for _, k in ipairs(keys) do
+		local x = t[k]
+
+		if type(x) == "table" then
+			for _, y in ipairs(x) do
+				s[#s + 1] = ("%s+=%s\n"):format(k, y)
+			end
+		else
+			s[#s + 1] = ("%s=%s\n"):format(k, x)
+		end
+	end
+	return table.concat(s)
+end
+
+function R.wanted(list)
+	local s = {}
+
+	for _, r in ipairs(list) do
+		s[#s + 1] = ("%s  (wanted by %s)\n"):format(r.title, r.srcs)
+	end
+	return #s > 0 and table.concat(s) or "nothing wanted\n"
+end
+
+function R.related(rows)
+	local s = {}
+
+	for _, r in ipairs(rows) do
+		s[#s + 1] = ("%s%s %s %s  %s\n"):format(("  "):rep(r.depth - 1),
+		    r.dir == "out" and "->" or "<-", r.rel, r.id, r.title)
+	end
+	return #s > 0 and table.concat(s) or "no linked documents\n"
+end
+
+function R.recent(rows)
+	local s = {}
+
+	for _, r in ipairs(rows) do
+		s[#s + 1] = ("%s  %s rev %d  %s  %s\n"):format(r.created, r.id,
+		    r.rev, r.author or "?", r.title)
+	end
+	return #s > 0 and table.concat(s) or "no versions\n"
+end
+
+-- status(rows, failed) -> queue counts, then the latest failed jobs
+function R.status(rows, failed)
+	local s = {}
+
+	for _, r in ipairs(rows) do
+		s[#s + 1] = ("%-10s %-8s %d\n"):format(r.kind, r.status, r.count)
+	end
+	for _, r in ipairs(failed or {}) do
+		s[#s + 1] = ("failed job %d %s: %s\n"):format(r.id, r.kind,
+		    r.error or "")
+	end
+	return #s > 0 and table.concat(s) or "queue empty\n"
+end
+
+function M.failed(d)
+	return d:rows("SELECT id, kind, error FROM job "
+	    .. "WHERE status = 'failed' ORDER BY id DESC LIMIT 10")
 end
 
 local function conflict(e)
@@ -525,6 +646,8 @@ local function noteout(v)
 	end
 	return table.concat(s)
 end
+
+R.note = noteout
 
 function C.put(p, d)
 	local title = p.args[1] or error("put needs a title", 0)
@@ -602,29 +725,18 @@ function C.search(p, d)
 	    offset = math.tointeger(tonumber(p.opts.offset)),
 	    chunks = math.tointeger(tonumber(p.opts.chunks)) })
 
-	out(p.opts, { hits = hits, total = total }, function(v)
-		local s = {}
-
-		for _, h in ipairs(v.hits) do
-			s[#s + 1] = ("%s  %s  (%s, %s)%s\n"):format(store.uri(h.id),
-			    h.title, h.author or "?", h.updated:sub(1, 10),
-			    h.pending and "  text pending" or "")
-			for _, c in ipairs(h.chunks or {}) do
-				s[#s + 1] = ("    %s%s\n"):format(c.page
-				    and ("p" .. c.page .. ": ") or "",
-				    (c.snippet:gsub("%s+", " ")))
-			end
-		end
-		s[#s + 1] = ("%d of %d\n"):format(#v.hits, v.total)
-		return table.concat(s)
-	end)
+	out(p.opts, { hits = hits, total = total }, R.hits)
 end
+
 
 function C.get(p, d)
 	local id, rev, frag = M.target(d, p.args[1] or error("get needs an id", 0))
 
 	out(p.opts, M.view(d, id, math.tointeger(tonumber(p.opts.rev)) or rev,
-	    math.tointeger(tonumber(p.opts.page)), p.opts.at or frag), showdoc)
+	    math.tointeger(tonumber(p.opts.page)), p.opts.at or frag),
+	    function(v)
+		return R.doc(v, p.opts.meta)
+	end)
 end
 
 function C.cat(p, d)
@@ -682,19 +794,9 @@ end
 function C.tags(p, d)
 	local prefix = p.args[1] and store.resolve_tag(d, p.args[1])
 
-	out(p.opts, search.tags(d, prefix), function(rows)
-		local s = {}
-
-		for _, r in ipairs(rows) do
-			local depth = select(2, r.name:gsub("/", ""))
-
-			s[#s + 1] = ("%s%s  %d%s%s\n"):format(("  "):rep(depth), r.name,
-			    r.count, #r.with > 0 and ("  with " .. join(r.with)) or "",
-			    r.about and ("  about " .. r.about) or "")
-		end
-		return table.concat(s)
-	end)
+	out(p.opts, search.tags(d, prefix), R.tags)
 end
+
 
 function C.link(p, d)
 	local src = M.docid(d, p.args[1] or error("link needs src", 0))
@@ -737,27 +839,9 @@ function C.meta(p, d)
 
 	local m = store.current(d, id).meta
 
-	out(p.opts, m, function(t)
-		local keys, s = {}, {}
-
-		for k in pairs(t) do
-			keys[#keys + 1] = k
-		end
-		table.sort(keys)
-		for _, k in ipairs(keys) do
-			local x = t[k]
-
-			if type(x) == "table" then
-				for _, y in ipairs(x) do
-					s[#s + 1] = ("%s+=%s\n"):format(k, y)
-				end
-			else
-				s[#s + 1] = ("%s=%s\n"):format(k, x)
-			end
-		end
-		return table.concat(s)
-	end)
+	out(p.opts, m, R.meta)
 end
+
 
 function C.wanted(p, d)
 	local rows = d:rows("SELECT w.title, group_concat(w.src, ' ') AS srcs "
@@ -766,31 +850,17 @@ function C.wanted(p, d)
 	    .. "WHERE lower(d.title) = lower(w.title) AND d.hidden = 0) "
 	    .. "GROUP BY lower(w.title) ORDER BY count(*) DESC, w.title")
 
-	out(p.opts, rows, function(list)
-		local s = {}
-
-		for _, r in ipairs(list) do
-			s[#s + 1] = ("%s  (wanted by %s)\n"):format(r.title, r.srcs)
-		end
-		return table.concat(s)
-	end)
+	out(p.opts, rows, R.wanted)
 end
+
 
 function C.related(p, d)
 	local id = M.docid(d, p.args[1] or error("related needs an id", 0))
 
 	out(p.opts, search.related(d, id,
-	    math.tointeger(tonumber(p.opts.depth)) or 1, p.opts.rel),
-	    function(rows)
-		local s = {}
-
-		for _, r in ipairs(rows) do
-			s[#s + 1] = ("%s%s %s %s  %s\n"):format(("  "):rep(r.depth - 1),
-			    r.dir == "out" and "->" or "<-", r.rel, r.id, r.title)
-		end
-		return table.concat(s)
-	end)
+	    math.tointeger(tonumber(p.opts.depth)) or 1, p.opts.rel), R.related)
 end
+
 
 local function sethidden(p, d, hidden)
 	local id = M.docid(d, p.args[1] or error("needs an id", 0))
@@ -811,16 +881,9 @@ end
 
 function C.recent(p, d)
 	out(p.opts, search.recent(d, p.opts.since, p.opts.author,
-	    math.tointeger(tonumber(p.opts.limit))), function(rows)
-		local s = {}
-
-		for _, r in ipairs(rows) do
-			s[#s + 1] = ("%s  %s rev %d  %s  %s\n"):format(r.created, r.id,
-			    r.rev, r.author or "?", r.title)
-		end
-		return table.concat(s)
-	end)
+	    math.tointeger(tonumber(p.opts.limit))), R.recent)
 end
+
 
 function C.alias(p, d)
 	local alias = store.resolve_tag(d, p.args[1] or error("alias needs a name", 0))
@@ -857,19 +920,10 @@ end
 
 function C.status(p, d)
 	out(p.opts, queue.status(d), function(rows)
-		local s = {}
-
-		for _, r in ipairs(rows) do
-			s[#s + 1] = ("%-10s %-8s %d\n"):format(r.kind, r.status, r.count)
-		end
-		for _, r in ipairs(d:rows("SELECT id, kind, error FROM job "
-		    .. "WHERE status = 'failed' ORDER BY id DESC LIMIT 10")) do
-			s[#s + 1] = ("failed job %d %s: %s\n"):format(r.id, r.kind,
-			    r.error or "")
-		end
-		return table.concat(s)
+		return R.status(rows, M.failed(d))
 	end)
 end
+
 
 function C.fsck(p, d)
 	local problems = {}

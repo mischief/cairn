@@ -82,6 +82,18 @@ local function spawn_enrich(d, path)
 	require("cairn.proc").spawn(argv)
 end
 
+local R = cli.render
+
+-- text(s) is a tool result of plain text, so the agent reads lines and
+-- not a JSON string with escaped newlines
+local function text(s)
+	return { content = { mcptk.text(s) } }
+end
+
+local function data(s)
+	return text(s .. "\n" .. M.DATA .. "\n")
+end
+
 local LINK = mcptk.obj{ fields = {
 	rel = mcptk.str{ enum = { "see-also", "cites", "supersedes",
 	    "contradicts" } },
@@ -116,28 +128,32 @@ function M.tools(d, path, author)
 			    superseded = a.superseded, limit = a.limit,
 			    offset = a.offset, chunks = a.chunks })
 
-			return { hits = hits, total = total, note = M.DATA }
+			return data(R.hits({ hits = hits, total = total }))
 		end,
 	}
 
 	T[#T + 1] = {
 		name = "get",
-		description = "Get one document: fields, tags, links (each marked "
-		    .. "when its target changed since it was linked), and one page "
-		    .. "of text (16000 characters). id takes an id, a CID, or a "
-		    .. "cairn: URI; @REV picks a version, #p=N one PDF page, #text "
-		    .. "the sections whose heading holds text.",
+		description = "Get one document: fields, tags, dcterms metadata, "
+		    .. "links (each marked when its target changed since it was "
+		    .. "linked), and one page of text (4000 characters by default). "
+		    .. "id takes an id, a CID, or a cairn: URI; @REV picks a "
+		    .. "version, #p=N one PDF page, #text the sections whose "
+		    .. "heading holds text. Page through long text with page.",
 		args = {
 			id = mcptk.str{ desc = "id, CID, or cairn:ID[@REV][#p=N]" },
 			rev = mcptk.int{ optional = true, min = 1 },
 			page = mcptk.int{ default = 1, min = 1 },
+			chars = mcptk.int{ default = 4000, min = 500, max = 16000,
+			    desc = "characters of text per page" },
+			meta = mcptk.bool{ default = false,
+			    desc = "also show the raw pdf.* and jev.* keys" },
 		},
 		run = function(a)
 			local id, rev, frag = cli.target(d, a.id)
-			local v = cli.view(d, id, a.rev or rev, a.page, frag)
+			local v = cli.view(d, id, a.rev or rev, a.page, frag, a.chars)
 
-			v.note = M.DATA
-			return v
+			return data(R.doc(v, a.meta))
 		end,
 	}
 
@@ -160,9 +176,9 @@ function M.tools(d, path, author)
 			    title = a.title, body = a.body, tags = a.tags,
 			    links = a.links, about = a.about, author = author() })
 
-			return { id = id, rev = rev, cid = cid.tostring(c),
+			return text(R.note({ rev = rev, cid = cid.tostring(c),
 			    uri = store.uri(id), similar = dups, close_tags = close,
-			    wanted = wanted, fills = fills }
+			    wanted = wanted, fills = fills }))
 		end,
 	}
 
@@ -216,8 +232,8 @@ function M.tools(d, path, author)
 			if not ok then
 				return nil, tostring(id)
 			end
-			return { id = id, rev = rev, cid = cid.tostring(c),
-			    uri = store.uri(id), wanted = wanted, fills = fills }
+			return text(R.note({ rev = rev, cid = cid.tostring(c),
+			    uri = store.uri(id), wanted = wanted, fills = fills }))
 		end,
 	}
 
@@ -256,7 +272,8 @@ function M.tools(d, path, author)
 			if not ok then
 				return nil, tostring(id)
 			end
-			return { id = id, rev = rev, meta = store.current(d, id).meta }
+			return text(("%s rev %d\n"):format(store.uri(id), rev)
+			    .. R.meta(store.current(d, id).meta))
 		end,
 	}
 
@@ -292,7 +309,7 @@ function M.tools(d, path, author)
 			if not ok then
 				return nil, tostring(id)
 			end
-			return { id = id, rev = rev }
+			return text(("%s rev %d\n"):format(store.uri(id), rev))
 		end,
 	}
 
@@ -302,8 +319,8 @@ function M.tools(d, path, author)
 		    .. "tags seen with each, and each tag's about page.",
 		args = { prefix = mcptk.str{ optional = true } },
 		run = function(a)
-			return { tags = search.tags(d, a.prefix
-			    and store.resolve_tag(d, a.prefix)) }
+			return text(R.tags(search.tags(d, a.prefix
+			    and store.resolve_tag(d, a.prefix))))
 		end,
 	}
 
@@ -325,7 +342,7 @@ function M.tools(d, path, author)
 			if not ok then
 				return nil, tostring(id)
 			end
-			return { id = id, rev = rev }
+			return text(("%s rev %d\n"):format(store.uri(id), rev))
 		end,
 	}
 
@@ -338,7 +355,7 @@ function M.tools(d, path, author)
 			rel = mcptk.str{ optional = true },
 		},
 		run = function(a)
-			return { related = search.related(d, a.id, a.depth, a.rel) }
+			return text(R.related(search.related(d, a.id, a.depth, a.rel)))
 		end,
 	}
 
@@ -351,7 +368,8 @@ function M.tools(d, path, author)
 			limit = mcptk.int{ default = 20, min = 1, max = 200 },
 		},
 		run = function(a)
-			return { recent = search.recent(d, a.since, a.author, a.limit) }
+			return text(R.recent(search.recent(d, a.since, a.author,
+			    a.limit)))
 		end,
 	}
 
@@ -380,8 +398,9 @@ function M.tools(d, path, author)
 			if #kinds > 0 then
 				pcall(spawn_enrich, d, path)
 			end
-			return { id = id, rev = rev, file = cid.tostring(fc),
-			    jobs = kinds }
+			return text(("%s rev %d file %s%s\n"):format(store.uri(id), rev,
+			    cid.tostring(fc), #kinds > 0
+			    and ("  queued: " .. table.concat(kinds, ", ")) or ""))
 		end,
 	}
 
@@ -390,12 +409,12 @@ function M.tools(d, path, author)
 		description = "Titles that notes link to with [[title]] but no "
 		    .. "document has yet: notes worth writing.",
 		run = function()
-			return { wanted = d:rows("SELECT w.title, "
-			    .. "group_concat(w.src, ' ') AS wanted_by FROM wanted w "
+			return text(R.wanted(d:rows("SELECT w.title, "
+			    .. "group_concat(w.src, ' ') AS srcs FROM wanted w "
 			    .. "JOIN doc s ON s.id = w.src AND s.hidden = 0 "
 			    .. "WHERE NOT EXISTS (SELECT 1 FROM doc d "
 			    .. "WHERE lower(d.title) = lower(w.title) AND d.hidden = 0) "
-			    .. "GROUP BY lower(w.title) ORDER BY count(*) DESC") }
+			    .. "GROUP BY lower(w.title) ORDER BY count(*) DESC")))
 		end,
 	}
 
@@ -403,7 +422,7 @@ function M.tools(d, path, author)
 		name = "status",
 		description = "Extraction queue counts by kind and status.",
 		run = function()
-			return { queue = queue.status(d) }
+			return text(R.status(queue.status(d), cli.failed(d)))
 		end,
 	}
 	return T
