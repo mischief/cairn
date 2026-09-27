@@ -552,6 +552,297 @@ M.list.expand = {
 	end,
 }
 
+-- topics: a model picks the general topics of each document. The
+-- topics are the tags topic/NAME that have an about page; the page's
+-- scope note tells the model what each one covers. Each pick becomes a
+-- topic/NAME tag.
+
+M.TOPICS_MAX = 4
+
+-- topiclist(d) -> list of topic names, map of name to scope note
+local function topiclist(d)
+	local search = require "cairn.search"
+	local out, scope = {}, {}
+
+	for _, r in ipairs(search.tags(d, "topic/")) do
+		local name = r.name:match("^topic/(.+)$")
+
+		if name and r.about then
+			out[#out + 1] = name
+			scope[name] = r.scope or ""
+		end
+	end
+	if #out == 0 then
+		error("no topics: write an about page for each, such as\n"
+		    .. "  cairn put 'Topic: security' --about topic/security "
+		    .. "--set skos.scopeNote='threats and defenses' < body.md", 0)
+	end
+	return out, scope
+end
+
+-- tagsof(d, id) -> the tags of a document with aliases resolved
+local function tagsof(d, id)
+	local out = {}
+
+	for _, r in ipairs(d:rows("SELECT DISTINCT coalesce(a.name, t.name) AS "
+	    .. "name FROM tag t LEFT JOIN tag_alias a ON a.alias = t.name "
+	    .. "WHERE t.doc = ? ORDER BY 1", { id })) do
+		out[#out + 1] = r.name
+	end
+	return out
+end
+
+local function topicstate(d, id)
+	local store = require "cairn.store"
+	local w = store.current(d, id)
+	local chunks = {}
+
+	for _, e in ipairs(w.content and store.text(d, w.content) or {}) do
+		for _, c in ipairs(e.chunks) do
+			chunks[#chunks + 1] = c
+		end
+	end
+
+	local own = {}
+
+	for _, t in ipairs(tagsof(d, id)) do
+		if not t:match("^topic/") then
+			own[#own + 1] = t
+		end
+	end
+
+	local head = { "Title: " .. w.title }
+
+	if #own > 0 then
+		head[#head + 1] = "Tags: " .. table.concat(own, ", ")
+	end
+
+	-- the topics of close documents keep answers consistent
+	for _, r in ipairs(d:rows("SELECT s.other, d.title FROM similar s "
+	    .. "JOIN doc d ON d.id = s.other WHERE s.doc = ? AND s.score >= 0.7 "
+	    .. "ORDER BY s.score DESC LIMIT 3", { id })) do
+		local ts = {}
+
+		for _, t in ipairs(tagsof(d, r.other)) do
+			ts[#ts + 1] = t:match("^topic/(.+)")
+		end
+		if #ts > 0 then
+			head[#head + 1] = ("A similar document, %s, has the topics: %s")
+			    :format(r.title, table.concat(ts, ", "))
+		end
+	end
+
+	local body = sample(chunks, 1, M.TEXT)
+
+	if w.body and w.body ~= "" then
+		body = require("cairn.chunk").utf8(w.body:sub(1, M.TEXT))
+	end
+	return require("cairn.chunk").utf8(table.concat(head, "\n")
+	    .. "\n\nStart of the document:\n" .. body), w
+end
+
+-- pick(c, model, list, scope, state) -> list of topics, list of
+-- suggested topics not in the list; or nil, error. The model first
+-- names topics in its own words, so a topic missing from the list
+-- still shows.
+local function pick(c, model, list, scope, state)
+	local client = require("cairn.lgml").available()
+	local seen = {}
+
+	for _, t in ipairs(list) do
+		seen[t] = false
+	end
+
+	local schema = {
+		type = "object",
+		additionalProperties = false,
+		required = client.array({ "subjects", "topics" }),
+		properties = {
+			subjects = { type = "array", minItems = 1, maxItems = 3, items = {
+			    type = "string", pattern = "^[a-z]+(-[a-z]+)?$" } },
+			topics = { type = "array", minItems = 1,
+			    maxItems = M.TOPICS_MAX,
+			    items = { type = "string", enum = client.array(list) } },
+		},
+	}
+	local err, lines = nil, {}
+
+	for _, t in ipairs(list) do
+		lines[#lines + 1] = ("- %s: %s"):format(t, scope[t])
+	end
+	for _ = 1, 2 do
+		local r, e = c:call("POST", "/v1/chat/completions", {
+			model = model,
+			max_tokens = 200,
+			temperature = 0,
+			chat_template_kwargs = { enable_thinking = false },
+			response_format = { type = "json_schema",
+			    json_schema = { name = "topics", schema = schema } },
+			messages = { {
+				role = "user",
+				content = ("This is a list of topics, each with a note on "
+				    .. "what it covers:\n%s\n\nIn subjects, "
+				    .. "name 1 to 3 topics of this document in your own "
+				    .. "words, whether or not the list holds them. Make each "
+				    .. "as broad as the topics in the list: one or two "
+				    .. "lowercase words joined by a hyphen, not what this "
+				    .. "one document covers, and not a product or project."
+				    .. "\n\nIn topics, pick 1 to %d from the list. Use "
+				    .. "each topic as its note defines it, not as its name "
+				    .. "sounds. Pick a topic only when a reader who studies "
+				    .. "that topic "
+				    .. "would want this document. Do not pick a topic for "
+				    .. "a side fact, such as the language a program is "
+				    .. "written in. Fewer topics are better than weak "
+				    .. "ones.\n\n%s"):format(table.concat(lines, "\n"),
+				    M.TOPICS_MAX, state),
+			} },
+		})
+		local text = r and r.choices and r.choices[1]
+		    and r.choices[1].message and r.choices[1].message.content
+		local ok, a = pcall(client.json.decode, text or "")
+
+		if ok and type(a) == "table" and type(a.topics) == "table" then
+			local out = {}
+
+			for _, t in ipairs(a.topics) do
+				if seen[t] == false and #out < M.TOPICS_MAX then
+					seen[t] = true
+					out[#out + 1] = t
+				end
+			end
+			if #out > 0 then
+				local sug = {}
+
+				-- own words the list holds, also as a plural, are no news
+				for _, t in ipairs(type(a.subjects) == "table" and a.subjects or {}) do
+					if type(t) == "string" and seen[t] == nil
+					    and seen[(t:gsub("s$", ""))] == nil then
+						sug[#sug + 1] = t
+					end
+				end
+				return out, sug
+			end
+		end
+		err = e and (e.kind .. " " .. (e.message or "")) or "bad reply"
+	end
+	return nil, err
+end
+
+M.list.topics = {
+	usage = "topics [ID... | --all] [--apply] [--model m]",
+	desc = "pick general topics: the topic/ tags with an about page; "
+	    .. "without IDs only documents with no topic/ tag; --apply adds "
+	    .. "topic/NAME tags",
+	run = function(p, d)
+		local lgml = require "cairn.lgml"
+		local store = require "cairn.store"
+		local cli = require "cairn.cli"
+		local model = p.opts.model or config.get(d, "lgml.decide")
+		local list, scope = topiclist(d)
+		local c = lgml.client(d, { timeout = 600 })
+		local ids = {}
+
+		for _, a in ipairs(p.args) do
+			ids[#ids + 1] = cli.docid(d, a)
+		end
+		if #ids == 0 then
+			-- the about pages of topics define them; they take none
+			for _, r in ipairs(d:rows("SELECT id FROM doc d WHERE hidden = 0 "
+			    .. "AND superseded_by IS NULL AND (about IS NULL OR about NOT "
+			    .. "LIKE 'topic/%') AND (? OR NOT EXISTS (SELECT 1 "
+			    .. "FROM tag t LEFT JOIN tag_alias a ON a.alias = t.name "
+			    .. "WHERE t.doc = d.id AND coalesce(a.name, t.name) LIKE "
+			    .. "'topic/%')) ORDER BY title", { p.opts.all and 1 or 0 })) do
+				ids[#ids + 1] = r.id
+			end
+		end
+
+		local count, wish, done, t0 = {}, {}, 0, os.time()
+
+		for _, id in ipairs(ids) do
+			local state, w = topicstate(d, id)
+			local got, sug = pick(c, model, list, scope, state)
+
+			if not got then
+				print(("%s  error: %s"):format(id, sug))
+			else
+				done = done + 1
+				for _, t in ipairs(got) do
+					count[t] = (count[t] or 0) + 1
+				end
+				for _, t in ipairs(sug) do
+					wish[t] = (wish[t] or 0) + 1
+				end
+				print(("%s  %-50s  %s%s"):format(id,
+				    require("cairn.chunk").utf8(w.title:sub(1, 50)),
+				    table.concat(got, " "), #sug > 0
+				    and ("  (suggests " .. table.concat(sug, " ") .. ")")
+				    or ""))
+				if p.opts.apply then
+					store.update(d, id, nil, cli.author(), function(nw)
+						local set, keep = {}, {}
+
+						for _, t in ipairs(nw.tags) do
+							t = store.resolve_tag(d, t)
+							-- a new answer replaces old topics
+							if not t:match("^topic/") then
+								set[t] = true
+							end
+						end
+						for _, t in ipairs(got) do
+							set[store.resolve_tag(d, "topic/" .. t)] = true
+						end
+						for t in pairs(set) do
+							keep[#keep + 1] = t
+						end
+						table.sort(keep)
+						nw.tags = keep
+					end)
+				end
+			end
+		end
+		c:close()
+
+		-- a topic on most documents, or on one, sorts nothing
+		print(("\n%d documents, %d s"):format(done, os.time() - t0))
+		for _, t in ipairs(list) do
+			local n = count[t] or 0
+			local note = ""
+
+			if done >= 10 and n > done * 0.4 then
+				note = "  too broad?"
+			elseif done >= 10 and n < 2 then
+				note = "  too rare?"
+			end
+			print(("  %-22s %4d  %3d%%%s"):format(t, n,
+			    done > 0 and n * 100 // done or 0, note))
+		end
+
+		-- suggestions are never written; a good one becomes a topic when
+		-- someone writes its about page
+		local ws = {}
+
+		-- own words vary; on a big run only repeated ones mean a gap
+		for t, n in pairs(wish) do
+			if done < 10 or n >= 2 then
+				ws[#ws + 1] = { t = t, n = n }
+			end
+		end
+		table.sort(ws, function(a, b)
+			return a.n > b.n or (a.n == b.n and a.t < b.t)
+		end)
+		if #ws > 0 then
+			print("\nsuggested topics that have no about page:")
+			for _, x in ipairs(ws) do
+				print(("  %-22s %4d"):format(x.t, x.n))
+			end
+		end
+		print(p.opts.apply and "topic tags written"
+		    or "dry run; --apply writes topic/NAME tags")
+	end,
+}
+
 function M.main(p, d, path)
 	local name = p.args[1]
 
