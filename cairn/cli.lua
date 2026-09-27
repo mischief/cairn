@@ -571,7 +571,11 @@ R.doc = showdoc
 function R.hits(v)
 	local s = {}
 
-	for _, h in ipairs(v.hits) do
+	for i, h in ipairs(v.hits) do
+		-- a blank line between hits keeps them apart
+		if i > 1 then
+			s[#s + 1] = "\n"
+		end
 		s[#s + 1] = ("%s  %s  (%s, %s)%s\n"):format(store.uri(h.id),
 		    h.title, h.author or "?", h.updated:sub(1, 10),
 		    h.pending and "  text pending" or "")
@@ -579,12 +583,16 @@ function R.hits(v)
 			s[#s + 1] = ("    = %s\n"):format(h.abstract)
 		end
 		for _, c in ipairs(h.chunks or {}) do
-			s[#s + 1] = ("    %s%s\n"):format(c.page
-			    and ("p" .. c.page .. ": ") or "",
+			-- a page for PDFs, the last heading for sectioned text
+			local at = c.page and ("p" .. c.page .. ": ")
+			    or c.heading and ("§ " .. (c.heading:match("([^>]+)$") or "")
+			    :gsub("^%s+", "") .. ": ") or ""
+
+			s[#s + 1] = ("    %s%s\n"):format(at,
 			    (c.snippet:gsub("%s+", " ")))
 		end
 	end
-	s[#s + 1] = ("%d of %d\n"):format(#v.hits, v.total)
+	s[#s + 1] = ("\n%d of %d\n"):format(#v.hits, v.total)
 	return table.concat(s)
 end
 
