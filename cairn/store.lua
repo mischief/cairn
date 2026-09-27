@@ -707,7 +707,8 @@ function M.neardups(d, title, body, except)
 	local q = table.concat(words, " OR ")
 	local rows = d:rows("SELECT d.id, d.title FROM doc_fts f "
 	    .. "JOIN doc d ON d.n = f.rowid WHERE doc_fts MATCH ? "
-	    .. "AND d.hidden = 0 AND d.superseded_by IS NULL AND d.id != ? "
+	    .. "AND d.hidden = 0 AND d.superseded_by IS NULL AND d.about IS NULL "
+	    .. "AND d.id != ? "
 	    .. "ORDER BY bm25(doc_fts) LIMIT 3", { q, except or "" })
 
 	return rows
