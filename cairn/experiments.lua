@@ -72,19 +72,12 @@ M.list.enrich = {
 M.MIN = 0.8
 M.TEXT = 3000
 
-M.TYPES = {
-	specification = "a technical specification of a format, protocol, "
-	    .. "interface, or architecture from one vendor or project",
-	standard = "a standard or draft approved by a standards body such as "
-	    .. "ISO, OASIS, or a government",
-	manual = "a programmer's, user's, or technical reference manual for a "
-	    .. "product or chip family",
-	datasheet = "electrical and pin data of one part or module",
-	paper = "a research paper",
-	schematic = "a circuit schematic",
-	book = "a book or monograph",
-	notes = "notes, a web page, or API documentation",
-}
+-- the forms of cairn/vocab.lua, as choices for dcterms.type
+M.TYPES = {}
+
+for _, f in ipairs(require("cairn.vocab").forms) do
+	M.TYPES[f[1]] = f[2]
+end
 
 M.LANGS = { en = "English", pl = "Polish", de = "German", fr = "French",
     zh = "Chinese", ja = "Japanese", other = "another language" }
@@ -549,6 +542,164 @@ M.list.expand = {
 		end
 		c:close()
 		print(("%d chunks, %d s"):format(total, os.time() - t0))
+	end,
+}
+
+-- form: a model picks each document's form (dcterms.type) from the forms
+-- in cairn/vocab.lua. A value a person set is kept; values written by a
+-- model (jev.model or gen.type) are judged again.
+
+-- tags that name a form; form --apply moves them into dcterms.type
+M.FORMTAGS = { spec = true, specification = true, manual = true,
+    paper = true, standard = true, datasheet = true, schematic = true }
+
+-- formstate(d, id) -> prompt state for one document, its current version
+local function formstate(d, id)
+	local store = require "cairn.store"
+	local w = store.current(d, id)
+	local chunks = {}
+
+	for _, e in ipairs(w.content and store.text(d, w.content) or {}) do
+		for _, c in ipairs(e.chunks) do
+			chunks[#chunks + 1] = c
+		end
+	end
+
+	local tags = {}
+
+	for _, t in ipairs(w.tags) do
+		if not t:match("^topic/") then
+			tags[#tags + 1] = t
+		end
+	end
+
+	local head = { "Title: " .. w.title, "File type: " .. (w.mime or "?") }
+
+	if #tags > 0 then
+		head[#head + 1] = "Tags: " .. table.concat(tags, ", ")
+	end
+	return require("cairn.chunk").utf8(table.concat(head, "\n")
+	    .. "\n\nStart of the document:\n" .. sample(chunks, 1, 2500)), w
+end
+
+-- byhand(m) -> true when a person set a known form
+local function byhand(m)
+	local v = m["dcterms.type"]
+
+	return type(v) == "string" and M.TYPES[v] ~= nil and not m["jev.model"]
+	    and not m["gen.type"]
+end
+
+M.list.form = {
+	usage = "form [ID... | --all] [--apply] [--model m]",
+	desc = "pick each document's form (dcterms.type) from the list in "
+	    .. "cairn/vocab.lua; without IDs only documents not judged yet; "
+	    .. "--apply writes it and drops form tags such as manual or paper",
+	run = function(p, d)
+		local lgml = require "cairn.lgml"
+		local store = require "cairn.store"
+		local cli = require "cairn.cli"
+		local client = lgml.available()
+		local model = p.opts.model or config.get(d, "lgml.decide")
+		local forms, lines = {}, {}
+
+		for _, f in ipairs(require("cairn.vocab").forms) do
+			forms[#forms + 1] = f[1]
+			lines[#lines + 1] = ("- %s: %s"):format(f[1], f[2])
+		end
+
+		local ids, named = {}, #p.args > 0
+
+		for _, a in ipairs(p.args) do
+			ids[#ids + 1] = cli.docid(d, a)
+		end
+		if not named then
+			for _, r in ipairs(d:rows("SELECT id FROM doc WHERE hidden = 0 "
+			    .. "AND superseded_by IS NULL AND about IS NULL "
+			    .. "ORDER BY title")) do
+				local m = store.current(d, r.id).meta
+
+				if not byhand(m) and (p.opts.all or not m["gen.type"]) then
+					ids[#ids + 1] = r.id
+				end
+			end
+		end
+
+		local c = lgml.client(d, { timeout = 600 })
+		local count, done, t0 = {}, 0, os.time()
+		local schema = { type = "object", additionalProperties = false,
+		    required = client.array({ "form" }), properties = { form = {
+		    type = "string", enum = client.array(forms) } } }
+
+		for _, id in ipairs(ids) do
+			local state, w = formstate(d, id)
+			local r = c:call("POST", "/v1/chat/completions", {
+				model = model,
+				max_tokens = 40,
+				temperature = 0,
+				chat_template_kwargs = { enable_thinking = false },
+				response_format = { type = "json_schema",
+				    json_schema = { name = "form", schema = schema } },
+				messages = { { role = "user", content = state
+				    .. "\n\nWhat kind of document is this? Pick one form:\n"
+				    .. table.concat(lines, "\n") } },
+			})
+			local text = r and r.choices and r.choices[1]
+			    and r.choices[1].message and r.choices[1].message.content
+			local ok, a = pcall(client.json.decode, text or "")
+			local form = ok and type(a) == "table" and M.TYPES[a.form]
+			    and a.form
+
+			if not form then
+				print(("%s  error: no form in the reply"):format(id))
+			else
+				local old = w.meta["dcterms.type"]
+				local drop = {}
+
+				for _, t in ipairs(w.tags) do
+					if M.FORMTAGS[t] then
+						drop[#drop + 1] = t
+					end
+				end
+				done = done + 1
+				count[form] = (count[form] or 0) + 1
+				print(("%s  %-50s  %-13s -> %s%s"):format(id,
+				    require("cairn.chunk").utf8(w.title:sub(1, 50)),
+				    type(old) == "string" and old or "-", form,
+				    #drop > 0 and ("  (drops tag " .. table.concat(drop, " ")
+				    .. ")") or ""))
+				if p.opts.apply then
+					store.update(d, id, nil, cli.author(), function(nw)
+						local keep = {}
+
+						for _, t in ipairs(nw.tags) do
+							if not M.FORMTAGS[t] then
+								keep[#keep + 1] = t
+							end
+						end
+						nw.tags = keep
+						nw.meta["dcterms.type"] = form
+						nw.meta["gen.type"] = model
+					end)
+				end
+			end
+		end
+		c:close()
+
+		local rows = {}
+
+		for f, n in pairs(count) do
+			rows[#rows + 1] = { f = f, n = n }
+		end
+		table.sort(rows, function(x, y)
+			return x.n > y.n or (x.n == y.n and x.f < y.f)
+		end)
+		print(("\n%d documents, %d s"):format(done, os.time() - t0))
+		for _, x in ipairs(rows) do
+			print(("  %-14s %4d"):format(x.f, x.n))
+		end
+		print(p.opts.apply and "forms written"
+		    or "dry run; --apply writes dcterms.type")
 	end,
 }
 

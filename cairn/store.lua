@@ -756,6 +756,14 @@ function M.note(d, n)
 			end
 		end
 
+		local nm = n.meta or w.meta
+
+		-- a new note is form note unless it says otherwise
+		if not n.id and not n.about then
+			nm = nm or {}
+			nm["dcterms.type"] = nm["dcterms.type"] or "note"
+		end
+
 		local id, rev, c = M.write(d, {
 			id = n.id, rev = n.rev,
 			title = n.title or w.title,
@@ -766,7 +774,7 @@ function M.note(d, n)
 			about = n.about or w.about,
 			links = links,
 			hidden = w.hidden,
-			meta = n.meta or w.meta,
+			meta = nm,
 			author = n.author,
 		})
 

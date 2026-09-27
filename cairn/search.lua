@@ -16,7 +16,7 @@ M.CHUNKS = 3
 M.MAXCHUNKS = 10
 
 local FILTERS = { tag = true, mime = true, author = true, since = true,
-    meta = true, date = true, creator = true }
+    meta = true, date = true, creator = true, type = true }
 
 -- words(q) -> list of words; a filter value may be quoted:
 -- creator:"DoD NCSC"
@@ -45,7 +45,8 @@ local function words(q)
 end
 
 -- parse(q) -> text, filters. Filters are tag:, mime:, author:, since:,
--- meta:KEY[=VALUE|~VALUE], date:[<|>|<=|>=]EDTF, and creator:TEXT.
+-- meta:KEY[=VALUE|~VALUE], date:[<|>|<=|>=]EDTF, creator:TEXT, and
+-- type:FORM (dcterms.type).
 function M.parse(q)
 	local f = { tag = {}, meta = {} }
 	local rest = {}
@@ -151,6 +152,11 @@ local function filters(d, f, opts)
 			    .. "AND m.key = ?)"
 			args[#args + 1] = key
 		end
+	end
+	if f.type then
+		sql[#sql + 1] = "EXISTS (SELECT 1 FROM meta m WHERE m.doc = d.id "
+		    .. "AND m.key = 'dcterms.type' AND lower(m.value) = lower(?))"
+		args[#args + 1] = f.type
 	end
 	if f.creator then
 		sql[#sql + 1] = "EXISTS (SELECT 1 FROM meta m WHERE m.doc = d.id "

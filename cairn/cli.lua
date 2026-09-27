@@ -27,7 +27,7 @@ FIND:
   cairn related ID            documents linked to ID, then similar ones
   cairn recent                newest versions
   cairn wanted                titles notes link to that no document has
-  Metadata filters: date:<1990 date:1985 creator:intel
+  Metadata filters: date:<1990 date:1985 creator:intel type:paper
   meta:dcterms.publisher="DoD NCSC" meta:pdf.Producer~ghostscript
   Search before you research something, and before you write.
 
@@ -711,6 +711,28 @@ end
 
 R.note = noteout
 
+-- formhint(d, id) warns when a document's dcterms.type is not one of
+-- the forms in cairn/vocab.lua
+function M.formhint(d, id)
+	local v = d:row("SELECT value FROM meta WHERE doc = ? AND key = "
+	    .. "'dcterms.type' ORDER BY seq LIMIT 1", { id })
+
+	if not v then
+		return
+	end
+
+	local names = {}
+
+	for _, f in ipairs(require("cairn.vocab").forms) do
+		if f[1] == v then
+			return
+		end
+		names[#names + 1] = f[1]
+	end
+	io.stderr:write(("hint: dcterms.type %s is not a known form: %s\n")
+	    :format(v, table.concat(names, ", ")))
+end
+
 function C.put(p, d)
 	local title = p.args[1] or error("put needs a title", 0)
 	local body = readinput(p.args[2])
@@ -723,6 +745,7 @@ function C.put(p, d)
 	out(p.opts, { id = id, rev = rev, cid = cid.tostring(c),
 	    uri = store.uri(id), similar = dups, close_tags = close,
 	    wanted = wanted, fills = fills }, noteout)
+	M.formhint(d, id)
 end
 
 function C.edit(p, d)
@@ -756,6 +779,7 @@ function C.attach(p, d)
 
 	out(p.opts, M.attached(d, id, rev, fc, kinds, mime, existing),
 	    R.attached)
+	M.formhint(d, id)
 end
 
 -- attached(...) -> the result of an attach, with warnings and hints
@@ -831,6 +855,7 @@ NEAR, *) passes through. Filters go in the query:
   since:2026-09-01   updated on or after
   date:1985  date:<1990  date:>=2001-06   dcterms.date, as EDTF
   creator:TEXT       dcterms.creator holds TEXT: creator:"Rob Pike"
+  type:FORM          dcterms.type is FORM: type:manual, type:decision
   meta:KEY  meta:KEY=VALUE  meta:KEY~PART
 --hidden searches only hidden documents (cairn hide), so they can be
 found again and unhidden: cairn search --hidden '*'.
@@ -982,6 +1007,7 @@ function C.meta(p, d)
 		local nid, rev = store.setmeta(d, id, changes, M.author())
 
 		io.stderr:write(("%s rev %d\n"):format(store.uri(nid), rev))
+		M.formhint(d, id)
 	end
 
 	local m = store.current(d, id).meta

@@ -765,4 +765,37 @@ M.topics = {
 	    "Raising children." },
 }
 
+-- forms: what kind of document it is, stored in dcterms.type. Names
+-- follow the CSL item types where CSL has the kind; the rest are
+-- cairn's own. { form, scope note }.
+M.forms = {
+	-- published documents
+	{ "specification", "a technical specification of a format, protocol, interface, API, or architecture from a vendor or project" },
+	{ "standard", "a standard approved by a standards body, such as IEEE, ISO, ANSI, NISO, or a W3C Recommendation" },
+	{ "manual", "a user's, programmer's, or reference manual for a product, program, or language" },
+	{ "datasheet", "electrical and pin data of one part or module" },
+	{ "schematic", "a circuit schematic or board drawing" },
+	{ "paper", "a research or technical paper, in a journal, conference, or workshop (CSL paper-conference, article-journal)" },
+	{ "report", "a technical or research report" },
+	{ "thesis", "a thesis or dissertation" },
+	{ "book", "a book or monograph, or one part of one" },
+	{ "article", "a magazine, newspaper, blog, or web article" },
+	{ "tutorial", "a guide that teaches a task step by step" },
+	{ "talk", "a lecture or presentation: slides, a recording, or a transcript (CSL speech)" },
+	{ "software", "a program or its source code" },
+	{ "dataset", "a set of data" },
+	{ "image", "a photograph, diagram, or screenshot" },
+	{ "recording", "an audio recording that is not a talk, such as music" },
+	{ "video", "a film or video that is not a talk" },
+	{ "recipe", "a cooking recipe" },
+	-- notes written into cairn by agents and people
+	{ "note", "a note of facts, findings, or pitfalls" },
+	{ "overview", "a description of a project, program, or system as it is: what it is, where it lives, its state, how its parts fit" },
+	{ "howto", "steps to do one task" },
+	{ "decision", "a choice that was made and why, with the options not taken" },
+	{ "design", "a design or plan for something not built yet" },
+	{ "snippet", "short, tested code that solves a problem that comes back, with when to use it" },
+	{ "other", "none of the above" },
+}
+
 return M
