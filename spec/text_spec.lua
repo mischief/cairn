@@ -166,3 +166,21 @@ describe("abstract in search", function()
 		d:close()
 	end)
 end)
+
+describe("classifier authors", function()
+	it("keep the writer as the author and stay out of recent", function()
+		local search = require "cairn.search"
+		local d = assert(db.open(":memory:"))
+		local id = store.note(d, { title = "venti", body = "archival blocks",
+		    author = "kbd" })
+
+		store.update(d, id, nil, "cairn:topics", function(w)
+			w.title = "venti2"
+		end)
+		assert.equal("kbd", search.search(d, "archival")[1].author)
+		assert.equal(1, #search.search(d, "archival author:kbd"))
+		assert.equal(1, #search.recent(d))
+		assert.equal(1, #search.recent(d, nil, "cairn:topics"))
+		d:close()
+	end)
+end)

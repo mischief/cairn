@@ -126,7 +126,8 @@ local function filters(d, f, opts)
 		    or f.mime .. "/%"
 	end
 	if f.author then
-		sql[#sql + 1] = "d.author = ?"
+		sql[#sql + 1] = "EXISTS (SELECT 1 FROM doc_version v WHERE "
+		    .. "v.doc = d.id AND v.author = ?)"
 		args[#args + 1] = f.author
 	end
 	if f.since then
@@ -336,6 +337,10 @@ function M.search(d, q, opts)
 		h.pending = h.content and store.pending(d, h.content) or nil
 		h.uri = store.uri(h.id, nil, h.page and ("p=" .. h.page) or nil)
 		h.content, h.best, h.seen, h.depth = nil, nil, nil, nil
+		-- classifiers write as cairn:NAME; show who wrote the document
+		h.author = d:row("SELECT author FROM doc_version WHERE doc = ? "
+		    .. "AND author NOT LIKE 'cairn:%' ORDER BY rev DESC LIMIT 1",
+		    { h.id }) or h.author
 		h.score = tonumber(("%.4g"):format(-h.score))
 
 		-- the first sentence of the abstract says what a hit is
@@ -457,15 +462,18 @@ GROUP BY d.id ORDER BY depth, d.updated DESC LIMIT 100
 end
 
 -- recent(d, since, author, limit) -> recent versions, without the about
--- pages of tags
+-- pages of tags, and without classifier versions (author cairn:NAME)
+-- unless author names one
 function M.recent(d, since, author, limit)
 	return d:rows("SELECT v.doc AS id, v.rev, v.author, v.created, d.title "
 	    .. "FROM doc_version v JOIN doc d ON d.id = v.doc "
 	    .. "WHERE (? IS NULL OR v.created >= ?) "
 	    .. "AND (? IS NULL OR v.author = ?) AND d.hidden = 0 "
+	    .. "AND (? IS NOT NULL OR v.author NOT LIKE 'cairn:%') "
 	    .. "AND d.about IS NULL "
 	    .. "ORDER BY v.created DESC, v.rev DESC LIMIT ?",
-	    { since, since, author, author, math.min(limit or 20, 200), n = 5 })
+	    { since, since, author, author, author,
+	    math.min(limit or 20, 200), n = 6 })
 end
 
 M.normalize = tags.normalize
