@@ -302,6 +302,9 @@ function M.tools(d, path, author)
 						error(err, 0)
 					end
 					w.meta[key] = v
+					if key == "dcterms.type" then
+						w.handform = true
+					end
 				end
 			end)
 

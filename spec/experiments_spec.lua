@@ -104,6 +104,31 @@ describe("experiments with a fake lgml", function()
 		d:close()
 	end)
 
+	it("keeps a form a person chose", function()
+		local def = store.note(d, { title = "rsa", body = "ciphers",
+		    author = "k" })
+		local set = store.note(d, { title = "tor", body = "onions",
+		    author = "k", meta = { ["dcterms.type"] = "note" } })
+
+		assert.is_nil(store.current(d, def).meta["gen.form"])
+		-- naming the default form by hand counts too
+		store.setmeta(d, def, { "dcterms.type=note" }, "k")
+		assert.equal("model=hand wrote=note",
+		    store.current(d, def).meta["gen.form"])
+		assert.equal("model=hand wrote=note",
+		    store.current(d, set).meta["gen.form"])
+		store.setmeta(d, def, { "dcterms.type=report" }, "k")
+		assert.equal("model=hand wrote=report",
+		    store.current(d, def).meta["gen.form"])
+		-- a write that sets its own receipt keeps it
+		store.update(d, def, nil, "cairn:update", function(w)
+			w.meta["dcterms.type"] = "paper"
+			w.meta["gen.form"] = "v=2 model=m wrote=paper"
+		end)
+		assert.equal("v=2 model=m wrote=paper",
+		    store.current(d, def).meta["gen.form"])
+	end)
+
 	it("writes nothing on a dry run", function()
 		local id = store.note(d, { title = "rsa", body = "ciphers and keys",
 		    author = "k" })

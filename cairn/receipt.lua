@@ -94,7 +94,8 @@ function M.state(r, want, now)
 	if not r then
 		return "new"
 	end
-	if (r.wrote or "") ~= (now or "") then
+	-- model=hand: a person chose the value
+	if r.model == "hand" or (r.wrote or "") ~= (now or "") then
 		return "edited"
 	end
 	if r.content ~= want.content and r.content ~= want.legacy then

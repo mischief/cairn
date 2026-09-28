@@ -20,6 +20,8 @@ describe("receipt", function()
 		assert.equal("new", receipt.state(nil, want, ""))
 		assert.equal("current", receipt.state(r, want, "x"))
 		assert.equal("edited", receipt.state(r, want, "y"))
+		assert.equal("edited", receipt.state(receipt.parse(
+		    "model=hand wrote=x"), want, "x"))
 		assert.equal("changed", receipt.state(r, { v = 3, model = "m",
 		    content = "1@u", vocab = "ab" }, "x"))
 		assert.equal("old", receipt.state(r, { v = 4, model = "m",

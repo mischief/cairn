@@ -430,7 +430,7 @@ end
 -- write(d, w) makes a new version and returns id, rev, binary cid.
 -- w holds: id and rev (for an existing document, rev is the current
 -- one), title, name, mime, content (file id), tags, about, links,
--- hidden, author.
+-- hidden, author, and handform (the caller chose the form itself).
 function M.write(d, w)
 	assert(w.author, "write: no author")
 
@@ -479,6 +479,19 @@ function M.write(d, w)
 
 		if not tlist then
 			error(terr, 0)
+		end
+
+		-- a form a person sets stays: a hand receipt makes the form
+		-- classifier count it as edited. A classifier sets its own
+		-- receipt in the same write.
+		local wm = w.meta or {}
+		local pm = prev and M.nodemeta(M.node(d, prev)) or {}
+		local form = wm["dcterms.type"]
+
+		if type(form) == "string" and wm["gen.form"] == pm["gen.form"]
+		    and (w.handform or (prev and form ~= pm["dcterms.type"])) then
+			wm["gen.form"] = "model=hand wrote=" .. form
+			w.meta = wm
 		end
 
 		local mlist, merr = meta.clean(w.meta)
@@ -660,6 +673,11 @@ end
 function M.setmeta(d, id, changes, author)
 	return M.update(d, id, nil, author, function(w)
 		meta.apply(w.meta, changes)
+		for _, c in ipairs(changes) do
+			if c:match("^dcterms%.type%+?=") then
+				w.handform = true
+			end
+		end
 	end)
 end
 
@@ -771,6 +789,8 @@ function M.note(d, n)
 
 		local nm = n.meta or w.meta
 
+		local handform = nm and nm["dcterms.type"] ~= nil
+
 		-- a new note is form note unless it says otherwise
 		if not n.id and not n.about then
 			nm = nm or {}
@@ -789,6 +809,7 @@ function M.note(d, n)
 			hidden = w.hidden,
 			meta = nm,
 			author = n.author,
+			handform = handform,
 		})
 
 		d:run("DELETE FROM wanted WHERE src = ?", { id })
