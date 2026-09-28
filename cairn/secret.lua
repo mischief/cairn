@@ -64,10 +64,19 @@ function M.check(text)
 			return p[1]
 		end
 	end
+	-- public keys and certificates are meant to be shared
+	text = text:gsub("%-%-%-%-%-BEGIN [%u ]*PUBLIC KEY%-%-%-%-%-.-"
+	    .. "%-%-%-%-%-END [%u ]*PUBLIC KEY%-%-%-%-%-", " ")
+	text = text:gsub("%-%-%-%-%-BEGIN CERTIFICATE%-%-%-%-%-.-"
+	    .. "%-%-%-%-%-END CERTIFICATE%-%-%-%-%-", " ")
 	for line in text:gmatch("[^\n]+") do
 		-- URLs carry long mixed paths and commit hashes; the patterns
 		-- above still see a key inside one
 		line = line:gsub("%a[%w+.-]*://[^%s)%]>\"'`]+", " ")
+		-- a UUID, alone, never counts; drop it so a name joined to
+		-- one does not look like a key
+		line = line:gsub("%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-"
+		    .. "%x%x%x%x%x%x%x%x%x%x%x%x", " ")
 
 		local low = line:lower()
 

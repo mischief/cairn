@@ -155,6 +155,15 @@ describe("store", function()
 		assert.equal(0, d:row("SELECT count(*) FROM doc"))
 	end)
 
+	it("lets public keys and UUID names through", function()
+		note("pub", '"key" : "-----BEGIN PUBLIC KEY-----\\nMCowBQYDK2VwAyEA'
+		    .. '/QT6kQWOAMhDJf56jBmszEQQpJHqDsGDMZOdiptBgRk=\\n-----END '
+		    .. 'PUBLIC KEY-----\\n"')
+		note("efi", "LoaderKeyboardLayout-4a67b082-0a4c-41cf-b6c7-"
+		    .. "440b29bb8c4f")
+		assert.equal(2, d:row("SELECT count(*) FROM doc"))
+	end)
+
 	it("attaches a pdf and queues extraction", function()
 		local id, _, fc, kinds = store.attach(d, { data = "%PDF-1.4 fake",
 		    name = "sheet.pdf", author = "kbd", tags = { "datasheet" } })
