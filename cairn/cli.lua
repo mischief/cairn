@@ -21,6 +21,7 @@ every file.
 FIND:
   cairn search 'WORDS tag:TAG mime:pdf author:NICK since:2026-09-01'
   cairn get ID [--page N]     full text, 16000 characters a page
+  cairn get --summary ID      metadata, abstract, and links; no text
   cairn get 'cairn:ID#p=12'   one PDF page; search prints these URIs
   cairn get 'cairn:ID#p=12-15' pages 12 to 15
   cairn tags [PREFIX]         the topics, with counts
@@ -187,7 +188,7 @@ local FLAGS = { json = true, all = true, remove = true,
     ["from-file"] = true, ["dry-run"] = true, docs = true, meta = true,
     apply = true, force = true, hidden = true, ["about-pages"] = true,
     l = true, ids = true, q = true, quiet = true, stale = true, adopt = true,
-    unset = true,
+    unset = true, summary = true,
     ["retry-failed"] = true, help = true, h = true }
 
 function M.parse(argv)
@@ -400,7 +401,7 @@ end
 -- frag limits the text to one page ("p=12") or to headings holding
 -- frag. size is the characters of text per page, 16000 by default.
 -- similar is the lowest score of the similar documents listed.
-function M.view(d, id, rev, page, frag, size, similar)
+function M.view(d, id, rev, page, frag, size, similar, notext)
 	local cur = store.doc(d, id)
 
 	if not cur then
@@ -453,6 +454,10 @@ function M.view(d, id, rev, page, frag, size, similar)
 		v.file = cid.tostring(content)
 		v.size = d:row("SELECT size FROM file WHERE id = ?", { fid })
 		v.pending = store.pending(d, fid) or nil
+		if notext then
+			v.notext = true
+			return v
+		end
 
 		local parts = {}
 
@@ -568,6 +573,8 @@ local function showdoc(v, allmeta)
 	end
 	if v.pending then
 		l[#l + 1] = "text: pending\n"
+	elseif v.notext then
+		l[#l + 1] = "(text not shown; get reads it)\n"
 	end
 	if v.text then
 		l[#l + 1] = ("\n%s\n"):format(v.text)
@@ -973,7 +980,8 @@ function C.get(p, d)
 		end
 		out(p.opts, M.view(d, id, math.tointeger(tonumber(p.opts.rev))
 		    or rev, math.tointeger(tonumber(p.opts.page)),
-		    p.opts.at or frag, nil, tonumber(p.opts.similar)),
+		    p.opts.at or frag, nil, tonumber(p.opts.similar),
+		    p.opts.summary),
 		    function(v)
 			return R.doc(v, p.opts.meta)
 		end)
