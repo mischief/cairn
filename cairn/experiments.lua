@@ -648,7 +648,8 @@ function M.state(d, name, w, model, vocab, now, blank)
 		return (cur == "" or (blank or {})[cur]) and "new" or "edited"
 	end
 	return receipt.state(r, { v = M.VERSION[name], model = model,
-	    content = receipt.content(d, w.content), vocab = vocab }, cur)
+	    content = receipt.content(d, w.content),
+	    legacy = receipt.legacy(d, w.content), vocab = vocab }, cur)
 end
 
 -- plan(p, d, name, model, vocab, now, blank) -> ids to run, counts by
@@ -1458,6 +1459,44 @@ M.list.summarize = {
 		print(("\n%d documents, %d s; %s"):format(done, os.time() - t0,
 		    p.opts.apply and "abstracts written"
 		    or "dry run; --apply writes dcterms.abstract"))
+	end,
+}
+
+-- restamp: move receipts written before text hashes to the new content
+-- key, where the text has not changed since; one version a document
+M.list.restamp = {
+	usage = "restamp",
+	desc = "move old receipts to text-hash content keys, where nothing "
+	    .. "changed since",
+	run = function(_, d)
+		local store = require "cairn.store"
+		local n = 0
+
+		for _, row in ipairs(d:rows("SELECT id FROM doc WHERE hidden = 0 "
+		    .. "AND superseded_by IS NULL AND about IS NULL")) do
+			local w = store.current(d, row.id)
+			local old = receipt.legacy(d, w.content)
+			local new = receipt.content(d, w.content)
+			local todo = {}
+
+			for _, name in ipairs({ "form", "topics", "abstract" }) do
+				local r = receipt.parse(w.meta[receipt.key(name)])
+
+				if r and r.content == old then
+					r.content = new
+					todo[receipt.key(name)] = receipt.format(r)
+				end
+			end
+			if next(todo) then
+				store.update(d, row.id, nil, "cairn:update", function(nw)
+					for k, v in pairs(todo) do
+						nw.meta[k] = v
+					end
+				end)
+				n = n + 1
+			end
+		end
+		print(("%d documents restamped"):format(n))
 	end,
 }
 

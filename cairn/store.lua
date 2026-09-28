@@ -87,18 +87,26 @@ end
 -- index(d, file, kind, extractor, version, chunks) replaces the chunks
 -- of one extraction of a file
 function M.index(d, file, kind, extractor, version, chunks)
+	local bodies = {}
+
+	for i, c in ipairs(chunks) do
+		bodies[i] = c.body
+	end
+
+	local hash = chunk.hash(bodies)
+
 	d:tx(function()
 		local old = d:row("SELECT id FROM extract WHERE file = ? AND kind = ? "
 		    .. "AND extractor = ?", { file, kind, extractor })
 
 		if old then
 			d:run("DELETE FROM chunk WHERE extract = ?", { old })
-			d:run("UPDATE extract SET version = ?, created = ? WHERE id = ?",
-			    { version, util.now(), old })
+			d:run("UPDATE extract SET version = ?, created = ?, hash = ? "
+			    .. "WHERE id = ?", { version, util.now(), hash, old })
 		else
 			d:run("INSERT INTO extract (file, kind, extractor, version, "
-			    .. "created) VALUES (?, ?, ?, ?, ?)",
-			    { file, kind, extractor, version, util.now() })
+			    .. "created, hash) VALUES (?, ?, ?, ?, ?, ?)",
+			    { file, kind, extractor, version, util.now(), hash })
 			old = d.sql:last_insert_rowid()
 		end
 		for i, c in ipairs(chunks) do

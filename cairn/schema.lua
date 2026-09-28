@@ -299,6 +299,10 @@ SELECT d.n, d.title,
 FROM doc d;
 ]]
 
+-- extract.hash: SHA-256 of an extraction's text without whitespace, so
+-- a classifier receipt can tell changed text from a mere re-extraction
+M.migrations[10] = "ALTER TABLE extract ADD COLUMN hash TEXT;"
+
 M.VERSION = #M.migrations
 
 return M

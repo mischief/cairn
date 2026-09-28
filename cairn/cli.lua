@@ -457,7 +457,7 @@ function M.view(d, id, rev, page, frag, size, similar)
 		local parts = {}
 
 		for _, e in ipairs(store.text(d, fid)) do
-			local body = {}
+			local body, last = {}, nil
 
 			for _, ch in ipairs(e.chunks) do
 				if not keep(ch, frag) then
@@ -466,6 +466,16 @@ function M.view(d, id, rev, page, frag, size, similar)
 
 				local lead = ch.page and ("[page " .. ch.page .. "]\n") or ""
 
+				-- the chunker keeps a heading beside its text; put it back
+				-- where a new section starts
+				if not ch.page and ch.heading and ch.heading ~= last then
+					local depth = select(2, ch.heading:gsub(" > ", "")) + 1
+
+					lead = ("#"):rep(math.min(depth, 6)) .. " "
+					    .. (ch.heading:match("([^>]+)$"):gsub("^%s+", ""))
+					    .. "\n\n"
+				end
+				last = ch.heading
 				body[#body + 1] = lead .. ch.body
 				::next::
 			end

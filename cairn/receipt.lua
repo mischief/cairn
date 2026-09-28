@@ -41,8 +41,37 @@ function M.format(r)
 end
 
 -- content(d, file) -> a key that changes when a file's bytes or its
--- extracted text change
+-- extracted text change, and not when the same text is extracted again.
+-- It fills in extract.hash for extractions made before the column.
 function M.content(d, file)
+	if not file then
+		return "none"
+	end
+
+	local hs = {}
+
+	for _, e in ipairs(d:rows("SELECT id, hash FROM extract WHERE file = ? "
+	    .. "AND kind != 'expand' ORDER BY kind, extractor", { file })) do
+		local h = e.hash
+
+		if not h then
+			local bodies = {}
+
+			for _, c in ipairs(d:rows("SELECT body FROM chunk WHERE extract = ? "
+			    .. "ORDER BY seq", { e.id })) do
+				bodies[#bodies + 1] = c.body
+			end
+			h = require("cairn.chunk").hash(bodies)
+			d:run("UPDATE extract SET hash = ? WHERE id = ?", { h, e.id })
+		end
+		hs[#hs + 1] = h
+	end
+	return ("%d#%s"):format(file, M.hash(table.concat(hs)))
+end
+
+-- legacy(d, file) -> the content key of receipts written before text
+-- hashes: file id and the newest extraction time
+function M.legacy(d, file)
 	if not file then
 		return "none"
 	end
@@ -68,7 +97,7 @@ function M.state(r, want, now)
 	if (r.wrote or "") ~= (now or "") then
 		return "edited"
 	end
-	if r.content ~= want.content then
+	if r.content ~= want.content and r.content ~= want.legacy then
 		return "changed"
 	end
 	if (tonumber(r.v) or 0) < want.v then

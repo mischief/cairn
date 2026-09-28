@@ -245,3 +245,18 @@ describe("markdown headings", function()
 		assert.equal("walk(5) > NAME", ch[1].heading)
 	end)
 end)
+
+describe("get of a note", function()
+	it("shows headings and keeps the indent of a code line", function()
+		local cli = require "cairn.cli"
+		local d = assert(db.open(":memory:"))
+		local id = store.note(d, { title = "guide", author = "k",
+		    body = "# Using it\n\nintro\n\n## Health\n\n    cairn status\n"
+		    .. "    cairn stats\n" })
+		local text = cli.view(d, id).text
+
+		assert.matches("# Using it\n\nintro", text)
+		assert.matches("## Health\n\n    cairn status\n    cairn stats", text)
+		d:close()
+	end)
+end)

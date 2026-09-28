@@ -210,3 +210,42 @@ describe("experiments --stale", function()
 		d:close()
 	end)
 end)
+
+describe("receipts and re-extraction", function()
+	it("do not redo a document whose text is only indexed again", function()
+		local saved = { client = lgml.client, available = lgml.available,
+		    print = _G.print }
+
+		lgml.client = function()
+			return fake
+		end
+		lgml.available = function()
+			return { array = function(t)
+				return t
+			end, json = { decode = cjson.decode } }
+		end
+		_G.print = function() end
+
+		local d = assert(db.open(":memory:"))
+
+		topics.seed(d, "cairn", VOCAB)
+
+		local id = store.note(d, { title = "rsa", body = "# keys\n\nciphers",
+		    author = "k" })
+		local opts = { apply = true, t = {} }
+
+		x.main({ args = { "update" }, opts = opts }, d, ":memory:")
+
+		-- the same text, indexed again with a new time
+		local w = store.current(d, id)
+
+		store.indextext(d, w.content, "text/markdown", store.content(d,
+		    w.content))
+		calls = {}
+		x.main({ args = { "update" }, opts = opts }, d, ":memory:")
+		lgml.client, lgml.available = saved.client, saved.available
+		_G.print = saved.print
+		d:close()
+		assert.equal(0, #calls)
+	end)
+end)

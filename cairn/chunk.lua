@@ -40,7 +40,8 @@ end
 -- split a body longer than MAX at paragraph, then line, then any
 -- boundary
 local function split(body, out, page, heading)
-	body = body:gsub("^%s+", ""):gsub("%s+$", "")
+	-- drop leading blank lines only: the first line may be indented code
+	body = body:gsub("^%s*\n", ""):gsub("%s+$", "")
 	if body == "" then
 		return
 	end
@@ -54,7 +55,7 @@ local function split(body, out, page, heading)
 		end
 		out[#out + 1] = { page = page, heading = heading,
 		    body = (body:sub(1, at):gsub("%s+$", "")) }
-		body = body:sub(at + 1):gsub("^%s+", "")
+		body = body:sub(at + 1):gsub("^%s*\n", "")
 	end
 	if body ~= "" then
 		out[#out + 1] = { page = page, heading = heading, body = body }
@@ -216,6 +217,20 @@ function M.plain(s)
 
 	split(M.clean(s), out, nil, nil)
 	return out
+end
+
+-- hash(bodies) -> hex SHA-256 of the texts joined, whitespace removed,
+-- so layout changes such as indentation or line breaks do not count
+function M.hash(bodies)
+	local parts = {}
+
+	for i, b in ipairs(bodies) do
+		parts[i] = (b:gsub("%s+", ""))
+	end
+	return (require("cairn.sha256").sum(table.concat(parts)):gsub(".",
+	    function(c)
+		return ("%02x"):format(c:byte())
+	end))
 end
 
 -- weight(s) -> number of non-space characters, to judge an empty result
