@@ -336,8 +336,28 @@ function M.tools(d, path, author)
 		    .. "tags seen with each, and each tag's about page.",
 		args = { prefix = mcptk.str{ optional = true } },
 		run = function(a)
-			return text(R.tags(search.tags(d, a.prefix
-			    and store.resolve_tag(d, a.prefix))))
+			local rows = search.tags(d, a.prefix
+			    and store.resolve_tag(d, a.prefix))
+
+			-- the full list is large; without a prefix, leave out
+			-- unused tags, co-tags, and about pages
+			if a.prefix then
+				return text(R.tags(rows))
+			end
+
+			local kept, empty = {}, 0
+
+			for _, r in ipairs(rows) do
+				if r.count > 0 then
+					kept[#kept + 1] = { name = r.name, count = r.count,
+					    scope = r.scope, with = {} }
+				else
+					empty = empty + 1
+				end
+			end
+			return text(R.tags(kept) .. (empty > 0 and ("%d unused tags "
+			    .. "left out; pass a prefix such as topic/ to see "
+			    .. "them\n"):format(empty) or ""))
 		end,
 	}
 
