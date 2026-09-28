@@ -833,9 +833,12 @@ no model.
 
 A classifier that writes into documents (form, topics, summarize) leaves a
 receipt: one metadata value, `gen.form` or `gen.topics`, holding its
-version, the model, a content key (file id and the newest extraction
-time), a hash of its vocabulary, and what it wrote. It writes as
-author `cairn:NAME`. A run compares the receipt with the present:
+version, the model, a content key, a hash of its vocabulary, and what
+it wrote. It writes as author `cairn:NAME`. The content key is the
+file id and a hash of the extracted text with whitespace removed
+(`extract.hash`), so extracting the same text again, or a change of
+layout only, leaves the receipt current. A run compares the receipt
+with the present:
 
 - no receipt and nothing written: new;
 - the document no longer holds what the receipt says was written:
