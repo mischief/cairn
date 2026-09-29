@@ -400,11 +400,16 @@ M.list.similar = {
 		for _, id in ipairs(targets({ args = {} }, d)) do
 			local row = d:rows("SELECT title, content FROM doc WHERE id = ?",
 			    { id })[1]
-			local have = d:rows("SELECT file, model, dims FROM docvec "
-			    .. "WHERE doc = ?", { id })[1]
+			local have = d:rows("SELECT file, model, dims, created FROM "
+			    .. "docvec WHERE doc = ?", { id })[1]
+			-- text extracted after the vector was made, such as a PDF
+			-- enriched after its first embedding
+			local newer = have and row.content and d:row("SELECT 1 FROM "
+			    .. "extract WHERE file = ? AND kind != 'expand' AND "
+			    .. "created > ?", { row.content, have.created })
 
 			if p.opts.force or not have or have.file ~= row.content
-			    or have.model ~= model or have.dims ~= dims then
+			    or have.model ~= model or have.dims ~= dims or newer then
 				local chunks = row.content and filechunks(d, row.content,
 				    "expand") or {}
 				local v, n = docvector(lgml, c, row.title, chunks, model, dims)
