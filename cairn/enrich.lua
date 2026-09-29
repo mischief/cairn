@@ -73,15 +73,28 @@ local function one(d, job, token, opts, log)
 		queue.fail(d, job.id, token, chunks)
 		return
 	end
+	-- a chunk that looks like it holds a secret stays out of the index;
+	-- the rest of the file is still searchable
+	local kept, dropped = {}, 0
+
 	for _, c in ipairs(chunks) do
 		local bad = secret.check(c.body)
 
 		if bad then
-			log(("job %d %s: refused, %s"):format(job.id, job.kind, bad))
-			queue.fail(d, job.id, token, "refused: " .. bad, true)
-			return
+			dropped = dropped + 1
+			log(("job %d %s: chunk %s left out, %s"):format(job.id,
+			    job.kind, c.page and ("page " .. c.page) or tostring(c.seq
+			    or dropped), bad))
+		else
+			kept[#kept + 1] = c
 		end
 	end
+	if dropped > 0 and #kept == 0 then
+		queue.fail(d, job.id, token, "refused: every chunk looks like it "
+		    .. "holds a secret", true)
+		return
+	end
+	chunks = kept
 
 	local extractor = ({ pdf = "pdftotext", ocr = "tesseract",
 	    vision = "lgml:" .. opts.model,

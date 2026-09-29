@@ -122,6 +122,10 @@ describe("secret", function()
 		    .. "Through-A-Carry-Bit-wp.pdf"))
 		assert.is_not_nil(secret.check(
 		    "key: Zx8qP2vL-9mN4rT7wK1yB6cH3jF5gD0sAe-Qw"))
+		assert.is_nil(secret.check("the password in the "
+		    .. "dot11RSNAConfigPasswordValueTable has a password"))
+		assert.is_nil(secret.check("token: dot11WNMDiag8021xAuthRprtRqstToken"))
+		assert.is_not_nil(secret.check("key: MCowBQYDK2VwAyEA/QT6kQWOAMhDJf56jBmszEQ"))
 		assert.equal("aws access key", secret.check("AKIAABCDEFGHIJKLMNOP"))
 		assert.is_not_nil(secret.check(
 		    "api_key: Zx8qP2vL9mN4rT7wK1yB6cH3jF5gD0sAe"))

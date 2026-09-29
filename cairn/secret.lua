@@ -34,6 +34,33 @@ local function wordy(s)
 	return parts >= 3
 end
 
+-- camel(s) -> true when s is a camelCase or MIB-style name built
+-- from words, acronyms, and short numbers, such as
+-- dot11RSNAConfigPasswordValueTable. Random keys split into many one-
+-- and two-letter pieces; a name has few.
+local function camel(s)
+	local t = s:gsub("[%-_]", " ")
+
+	for _ = 1, 2 do
+		t = t:gsub("(%l)(%u)", "%1 %2"):gsub("(%u)(%u%l)", "%1 %2")
+	end
+	t = t:gsub("(%a)(%d)", "%1 %2"):gsub("(%d)(%a)", "%1 %2")
+
+	local parts, short = 0, 0
+
+	for part in t:gmatch("%S+") do
+		if part:match("^%d+$") then
+			if #part > 4 then
+				return false
+			end
+		elseif #part < 3 then
+			short = short + 1
+		end
+		parts = parts + 1
+	end
+	return parts >= 3 and short <= math.max(1, parts // 4)
+end
+
 -- bits of entropy per character of s
 local function entropy(s)
 	local counts = {}
@@ -89,6 +116,7 @@ function M.check(text)
 					if #word >= 32 and word:find("%d")
 					    and word:find("%u") and word:find("%l")
 					    and entropy(word) > 4.0 and not wordy(word)
+						    and not camel(word)
 					    and not require("cairn.cid").parse(word) then
 						return "high-entropy string near \""
 						    .. k .. "\""
