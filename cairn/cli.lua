@@ -22,6 +22,7 @@ FIND:
   cairn search 'WORDS tag:TAG mime:pdf author:NICK since:2026-09-01'
   cairn get ID [--page N]     full text, 16000 characters a page
   cairn get --summary ID      metadata, abstract, and links; no text
+  cairn get --all ID | less   all of the text at once
   cairn get 'cairn:ID#p=12'   one PDF page; search prints these URIs
   cairn get 'cairn:ID#p=12-15' pages 12 to 15
   cairn tags [PREFIX]         the topics, with counts
@@ -492,7 +493,8 @@ function M.view(d, id, rev, page, frag, size, similar, notext)
 		end
 
 		local text = table.concat(parts, "\n\n")
-		size = size or 16000
+		-- math.maxinteger asks for all of the text as one page
+		size = (size == math.maxinteger and math.max(#text, 1)) or size or 16000
 
 		page = page or 1
 		v.pages = math.max(1, (#text + size - 1) // size)
@@ -984,8 +986,8 @@ function C.get(p, d)
 		end
 		out(p.opts, M.view(d, id, math.tointeger(tonumber(p.opts.rev))
 		    or rev, math.tointeger(tonumber(p.opts.page)),
-		    p.opts.at or frag, nil, tonumber(p.opts.similar),
-		    p.opts.summary),
+		    p.opts.at or frag, p.opts.all and math.maxinteger or nil,
+		    tonumber(p.opts.similar), p.opts.summary),
 		    function(v)
 			return R.doc(v, p.opts.meta)
 		end)
