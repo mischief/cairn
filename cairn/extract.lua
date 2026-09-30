@@ -164,12 +164,13 @@ function M.pdf(data, opts)
 
 		-- a scan often has a text layer on a few pages only, such as a
 		-- typed introduction before scanned pages; OCR when most pages
-		-- are empty
+		-- are empty. A running header or page number alone still counts as
+		-- empty.
 		local chunks, pages, empty = chunk.pages(text), 0, 0
 
 		for p in text:gmatch("([^\f]*)\f") do
 			pages = pages + 1
-			if chunk.weight(p) < 20 then
+			if chunk.weight(p) < 200 then
 				empty = empty + 1
 			end
 		end
