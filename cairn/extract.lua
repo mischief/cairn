@@ -131,8 +131,8 @@ function M.twocolumn(page)
 	return best >= lines * 0.6 and gaps <= lines * 1.5
 end
 
--- pdf(data, opts) -> chunks, needocr. needocr is true when the pdf
--- has no text layer. Layout mode keeps tables readable but runs the
+-- pdf(data, opts) -> chunks, needocr. needocr is true when most pages
+-- have no text layer. Layout mode keeps tables readable but runs the
 -- columns of a two-column page together, so those pages come from
 -- reading order instead.
 function M.pdf(data, opts)
@@ -162,10 +162,18 @@ function M.pdf(data, opts)
 			end
 		end
 
-		local chunks = chunk.pages(text)
-		local pages = select(2, text:gsub("\f", "")) + 0
+		-- a scan often has a text layer on a few pages only, such as a
+		-- typed introduction before scanned pages; OCR when most pages
+		-- are empty
+		local chunks, pages, empty = chunk.pages(text), 0, 0
 
-		return chunks, chunk.weight(text) < 20 * math.max(pages, 1)
+		for p in text:gmatch("([^\f]*)\f") do
+			pages = pages + 1
+			if chunk.weight(p) < 20 then
+				empty = empty + 1
+			end
+		end
+		return chunks, pages == 0 or empty * 2 > pages
 	end)
 end
 
