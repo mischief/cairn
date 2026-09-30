@@ -28,6 +28,7 @@ FIND:
   cairn related ID            documents linked to ID, then similar ones
   cairn recent                newest versions
   cairn wanted                titles notes link to that no document has
+  cairn search '"exact phrase" OR word*'   FTS5: quotes, OR, NOT, NEAR, *
   Metadata filters: date:<1990 date:1985 creator:intel type:paper
   meta:dcterms.publisher="DoD NCSC" meta:pdf.Producer~ghostscript
   Search before you research something, and before you write.
@@ -902,6 +903,9 @@ search exits 1 when nothing matches. get, related, hide, and unhide
 read ids from standard input when the id is -.
 Examples:
   cairn search 'virtqueue notification'
+  cairn search '"priority inheritance" OR "priority ceiling"'
+  cairn search 'NEAR(page fault, 5) NOT linux'
+  cairn search 'sched* type:paper'
   cairn search 'name space tag:plan9'
   cairn search 'date:<1990 tag:security'
   cairn search -l 'type:paper tag:topic/kernels' | cairn get -
