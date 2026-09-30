@@ -275,8 +275,18 @@ end
 -- [[...]] targets in a markdown body. old holds the links of the last
 -- version: a title resolves to the document it named before, so a
 -- retitled or new document with the same title does not steal it.
+-- nocode(body) -> body with fenced code blocks and inline code spans
+-- blanked out, so an example such as `[[TARGET]]` is not a link
+local function nocode(body)
+	body = ("\n" .. body):gsub("\n%s*(```+)[^\n]*\n.-\n%s*%1[^\n]*", "\n")
+	body = body:gsub("\n%s*(~~~+)[^\n]*\n.-\n%s*%1[^\n]*", "\n")
+	return (body:gsub("(`+).-%1", ""))
+end
+
 function M.bodylinks(d, body, old)
 	local byname = {}
+
+	body = nocode(body)
 
 	for _, l in ipairs(old or {}) do
 		if l.name then

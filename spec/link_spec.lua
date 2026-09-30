@@ -105,6 +105,13 @@ describe("links", function()
 		assert.equal(0, #links(b))
 	end)
 
+	it("skips link syntax inside code", function()
+		local _, _, _, _, _, wanted = note("Syntax", "write `[[TARGET]]`, "
+		    .. "or\n\n```\n[[Also not]]\n```\n\nbut [[Real one]] links")
+
+		assert.same({ "Real one" }, wanted)
+	end)
+
 	it("keeps wanted titles and reports when a note fills one", function()
 		local b, _, _, _, _, wanted = note("Notes", "see [[Future topic]]")
 
