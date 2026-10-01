@@ -22,7 +22,8 @@ FIND:
   cairn search 'WORDS tag:TAG mime:pdf author:NICK since:2026-09-01'
   cairn get ID [--page N]     full text, 16000 characters a page
   cairn get --summary ID      metadata, abstract, and links; no text
-  cairn get --all ID | less   all of the text at once
+  cairn get --all ID | less   all of the text at once (a terminal pages it)
+  cairn open ID               the stored file in its viewer: a PDF's pages
   cairn get 'cairn:ID#p=12'   one PDF page; search prints these URIs
   cairn get 'cairn:ID#p=12-15' pages 12 to 15
   cairn tags [PREFIX]         the topics, with counts
@@ -148,6 +149,7 @@ usage: cairn [-d db] [--json] command [args]
       [--meta] [--similar min]
                                     show a document
   cat <id|cid> [out]                write the file bytes
+  open <id>                         show the file in its desktop viewer
   tag <id> [+tag|-tag]...           change tags
   tags [prefix]                     list tags
   topics seed                       write the starter list of topic/
@@ -461,7 +463,7 @@ function M.view(d, id, rev, page, frag, size, similar, notext)
 			return v
 		end
 
-		local parts = {}
+		local pieces = {}
 
 		for _, e in ipairs(store.text(d, fid)) do
 			local body, last = {}, nil
@@ -487,19 +489,36 @@ function M.view(d, id, rev, page, frag, size, similar, notext)
 				::next::
 			end
 			if #body > 0 then
-				parts[#parts + 1] = ("--- %s (%s)\n"):format(e.kind,
-				    e.extractor) .. table.concat(body, "\n\n")
+				pieces[#pieces + 1] = ("--- %s (%s)"):format(e.kind,
+				    e.extractor)
+				for _, b in ipairs(body) do
+					pieces[#pieces + 1] = b
+				end
 			end
 		end
 
-		local text = table.concat(parts, "\n\n")
-		-- math.maxinteger asks for all of the text as one page
-		size = (size == math.maxinteger and math.max(#text, 1)) or size or 16000
+		-- a page ends between chunks, so no sentence is cut in two; a
+		-- chunk longer than a page gets a page of its own.
+		-- math.maxinteger asks for all of the text as one page.
+		size = size or 16000
 
+		local pages, cur, len = {}, {}, 0
+
+		for _, s in ipairs(pieces) do
+			if len > 0 and len + 2 + #s > size then
+				pages[#pages + 1] = table.concat(cur, "\n\n")
+				cur, len = {}, 0
+			end
+			cur[#cur + 1] = s
+			len = len + (len > 0 and 2 or 0) + #s
+		end
+		if #cur > 0 or #pages == 0 then
+			pages[#pages + 1] = table.concat(cur, "\n\n")
+		end
 		page = page or 1
-		v.pages = math.max(1, (#text + size - 1) // size)
+		v.pages = #pages
 		v.page = page
-		v.text = text:sub((page - 1) * size + 1, page * size)
+		v.text = pages[page] or ""
 	end
 	return v
 end
@@ -967,8 +986,27 @@ function M.ids(p, d, what)
 end
 
 
+-- pager() -> a handle that writes to $PAGER, or nil when stdout is not
+-- a terminal
+local function pager()
+	local ok, unistd = pcall(require, "posix.unistd")
+
+	if not ok or unistd.isatty(1) ~= 1 then
+		return nil
+	end
+	return io.popen(os.getenv("PAGER") or "less -FRX", "w")
+end
+
 function C.get(p, d)
 	local targets = {}
+	-- at a terminal, show all of the text in a pager; --page still pages
+	local pg = not p.opts.json and not p.opts.page and not p.opts.summary
+	    and pager()
+
+	if pg then
+		p.opts.all = true
+		io.output(pg)
+	end
 
 	if p.args[1] == "-" then
 		for _, id in ipairs(M.ids(p, d, "get")) do
@@ -992,6 +1030,36 @@ function C.get(p, d)
 			return R.doc(v, p.opts.meta)
 		end)
 	end
+	if pg then
+		io.output(io.stdout)
+		pg:close()
+	end
+end
+
+-- open: hand the stored file to the desktop's viewer, so a PDF shows its
+-- pages and figures
+local EXT = { ["application/pdf"] = ".pdf", ["text/html"] = ".html",
+    ["text/markdown"] = ".md", ["text/plain"] = ".txt",
+    ["image/png"] = ".png", ["image/jpeg"] = ".jpg" }
+
+function C.open(p, d)
+	local id = M.docid(d, p.args[1] or error("open needs an id", 0))
+	local cur = store.doc(d, id)
+	local data = cur.content and store.content(d, cur.content)
+
+	if not data then
+		error("no file for " .. id, 0)
+	end
+
+	local w = store.current(d, id)
+	local ext = w.name and w.name:match("(%.[%w]+)$") or EXT[w.mime or ""]
+	    or ""
+	local path = ("%s/cairn-%s%s"):format(os.getenv("TMPDIR") or "/tmp", id,
+	    ext)
+
+	assert(util.writefile(path, data))
+	os.execute("xdg-open '" .. path:gsub("'", "'\\''") .. "' >/dev/null 2>&1 &")
+	print(path)
 end
 
 function C.cat(p, d)
