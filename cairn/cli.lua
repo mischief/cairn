@@ -401,6 +401,21 @@ local function join(list)
 	return table.concat(list or {}, ", ")
 end
 
+-- headparts(heading) -> the headings in a chunk's heading path. The
+-- chunker joins them with " > "; a name may itself hold ">", as in
+-- "\<newline\>", and older chunks hold empty parts ("Copyright >  > ").
+local function headparts(heading)
+	local out = {}
+
+	for p in (heading .. " > "):gmatch("(.-) > ") do
+		p = p:match("^%s*(.-)%s*$")
+		if p ~= "" then
+			out[#out + 1] = p
+		end
+	end
+	return out
+end
+
 -- view(d, id, rev, page, frag, size) -> table describing one document.
 -- frag limits the text to one page ("p=12") or to headings holding
 -- frag. size is the characters of text per page, 16000 by default.
@@ -478,11 +493,12 @@ function M.view(d, id, rev, page, frag, size, similar, notext)
 				-- the chunker keeps a heading beside its text; put it back
 				-- where a new section starts
 				if not ch.page and ch.heading and ch.heading ~= last then
-					local depth = select(2, ch.heading:gsub(" > ", "")) + 1
+					local parts = headparts(ch.heading)
 
-					lead = ("#"):rep(math.min(depth, 6)) .. " "
-					    .. (ch.heading:match("([^>]+)$"):gsub("^%s+", ""))
-					    .. "\n\n"
+					if #parts > 0 then
+						lead = ("#"):rep(math.min(#parts, 6)) .. " "
+						    .. parts[#parts] .. "\n\n"
+					end
 				end
 				last = ch.heading
 				body[#body + 1] = lead .. ch.body
@@ -628,9 +644,10 @@ function R.hits(v)
 		for _, c in ipairs(h.chunks or {}) do
 			-- a page for PDFs, the last two headings for sectioned text,
 			-- so "stat(5) > NAME" says which page, where "NAME" would not
+			local hp = c.heading and headparts(c.heading) or {}
 			local at = c.page and ("p" .. c.page .. ": ")
-			    or c.heading and ("§ " .. (c.heading:match("([^>]+>[^>]+)$")
-			    or c.heading):gsub("^%s+", "") .. ": ") or ""
+			    or #hp > 0 and ("§ " .. table.concat(hp, " > ",
+			    math.max(1, #hp - 1)) .. ": ") or ""
 
 			s[#s + 1] = ("    %s%s\n"):format(at,
 			    (c.snippet:gsub("%s+", " ")))

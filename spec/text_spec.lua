@@ -259,4 +259,17 @@ describe("get of a note", function()
 		assert.matches("## Health\n\n    cairn status\n    cairn stats", text)
 		d:close()
 	end)
+
+	it("shows a heading whose name ends in >", function()
+		local cli = require "cairn.cli"
+		local d = assert(db.open(":memory:"))
+		local id = store.note(d, { title = "vi", author = "k",
+		    body = "# Input\n\n## \\<newline\\>\n\nends a line\n\n"
+		    .. "## Notes <!-- todo -->\n\nmore\n" })
+		local text = cli.view(d, id).text
+
+		assert.matches("## \\<newline\\>\n\nends a line", text, 1, true)
+		assert.matches("## Notes <!-- todo -->\n\nmore", text, 1, true)
+		d:close()
+	end)
 end)
