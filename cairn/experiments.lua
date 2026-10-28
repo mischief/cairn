@@ -490,9 +490,31 @@ M.SCHEMA = {
 	required = { "terms", "questions" },
 }
 
+-- notes and field names a model leaks into a list
+local LEAKS = { "_note", "unquote", "^terms$", "^questions$" }
+
+-- looping(s) -> true when s repeats like a model stuck in a loop: one
+-- word 3 times in a row ("the-the-the"), or a word of 4 or more letters
+-- 4 times anywhere ("implementer implementation implementer ...").
+-- A normal question uses "the" 3 times, so short words count only in a
+-- row.
+local function looping(s)
+	local seen, last, run = {}, nil, 0
+
+	for w in s:lower():gmatch("%a+") do
+		run = w == last and run + 1 or 1
+		last = w
+		seen[w] = (seen[w] or 0) + 1
+		if run >= 3 or (#w >= 4 and seen[w] >= 4) then
+			return true
+		end
+	end
+	return false
+end
+
 -- clean(list, max) -> the strings of list a model got right: bullets
--- split apart, markup and runaway text dropped, words doubled by a slip
--- ("to to") made single
+-- split apart, markup, runaway text, loops and leaked notes dropped,
+-- words doubled by a slip ("to to") made single
 function M.clean(list, max)
 	local out = {}
 
@@ -502,8 +524,15 @@ function M.clean(list, max)
 			for part in (s:gsub("%-%s+", "\0") .. "\0"):gmatch("([^%z]*)%z") do
 				part = part:gsub("^%s+", ""):gsub("%s+$", "")
 				part = part:gsub("%f[%w](%w+) %1%f[%W]", "%1")
+
+				local low, leak = part:lower(), false
+
+				for _, l in ipairs(LEAKS) do
+					leak = leak or low:find(l) ~= nil
+				end
 				if #part >= 2 and #part <= max and not part:find("[][{}`<>]")
-				    and not part:lower():find("json", 1, true) then
+				    and not low:find("json", 1, true) and not leak
+				    and not looping(part) then
 					out[#out + 1] = part
 				end
 			end

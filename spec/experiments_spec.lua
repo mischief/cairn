@@ -274,3 +274,20 @@ describe("receipts and re-extraction", function()
 		assert.equal(0, #calls)
 	end)
 end)
+
+describe("clean", function()
+	it("drops loops and leaked notes, and keeps normal text", function()
+		local q = "What does the r_offset of the entry hold in the file?"
+
+		assert.same({ q, "SSH_MSG_KEX_HYBRID_INIT" }, x.clean({
+			q,
+			"SSH_MSG_KEX_HYBRID_INIT",
+			"the-the-the-the",
+			"implementer implementation implementer implementation "
+			    .. "implementer implementation implementer",
+			"_Note: The passage does not say",
+			"unquote",
+			"questions",
+		}, 200))
+	end)
+end)
