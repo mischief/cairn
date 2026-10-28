@@ -964,12 +964,15 @@ function M.pending(d, fileid)
 	    .. "AND status IN ('pending', 'running')", { fileid }) ~= nil
 end
 
--- text(d, fileid) -> list of { kind, extractor, chunks = {...} }
+-- text(d, fileid) -> list of { kind, extractor, chunks = {...} }. It
+-- leaves out expand extractions: their terms are for the index, not
+-- the text a reader or a classifier sees.
 function M.text(d, fileid)
 	local out = {}
 
 	for _, e in ipairs(d:rows("SELECT id, kind, extractor FROM extract "
-	    .. "WHERE file = ? ORDER BY kind, extractor", { fileid })) do
+	    .. "WHERE file = ? AND kind != 'expand' ORDER BY kind, extractor",
+	    { fileid })) do
 		e.chunks = d:rows("SELECT seq, page, heading, body FROM chunk "
 		    .. "WHERE extract = ? ORDER BY seq", { e.id })
 		out[#out + 1] = e

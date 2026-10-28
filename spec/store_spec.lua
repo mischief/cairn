@@ -216,6 +216,28 @@ describe("search chunks", function()
 	end)
 end)
 
+describe("expand extractions", function()
+	it("stay out of the text but in the index", function()
+		local d = assert(db.open(":memory:"))
+		local id = store.note(d, { title = "rsa", body = "# keys\n\nciphers",
+		    author = "kbd" })
+		local w = store.current(d, id)
+
+		store.index(d, w.content, "expand", "lgml:m", 1,
+		    { { body = "terms: public key" } })
+
+		local kinds = {}
+
+		for _, e in ipairs(store.text(d, w.content)) do
+			kinds[#kinds + 1] = e.kind
+		end
+		assert.same({ "text" }, kinds)
+		-- search still finds the words of the expansion
+		assert.equal(1, #search.search(d, "public"))
+		d:close()
+	end)
+end)
+
 describe("search input", function()
 	it("reads bad FTS5 input as words and lists tags by start", function()
 		local d = assert(db.open(":memory:"))
