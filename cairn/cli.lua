@@ -248,11 +248,44 @@ function M.dbpath(opts)
 	return base .. "/cairn/cairn.db"
 end
 
--- command() -> how a shell reaches cairn: "cairn" when it is on PATH,
--- else the full path of a known install
+-- progname() -> the name this program runs as: the last part of
+-- arg[0]. A wrapper script with its own name gets that name.
+function M.progname()
+	local a0 = arg and arg[0]
+
+	return a0 and a0:match("([^/]+)$") or "cairn"
+end
+
+-- named(s) -> s with the word cairn replaced by progname(), so the
+-- manual names the program that reads it. URIs (cairn:ID), paths and
+-- file names keep the word.
+function M.named(s)
+	local name = M.progname()
+
+	if name == "cairn" then
+		return s
+	end
+	return (s:gsub("()cairn()", function(i, j)
+		local before, after = s:sub(i - 1, i - 1), s:sub(j, j + 1)
+
+		if before:match("[%w_/.-]") or after:match("^[%w_/.-]")
+		    or after:match("^:%S") then
+			return nil
+		end
+		return name
+	end))
+end
+
+-- command() -> how a shell reaches this program: its name when it is
+-- on PATH, else the full path of a known install
 function M.command()
-	if util.which("cairn") then
-		return "cairn"
+	local name = M.progname()
+
+	if util.which(name) then
+		return name
+	end
+	if name ~= "cairn" then
+		return arg[0]
 	end
 
 	local stat = require "posix.sys.stat"
@@ -314,7 +347,8 @@ function M.open(opts, create)
 	local path = M.dbpath(opts)
 
 	if not create and not require("posix.sys.stat").stat(path) then
-		error("no database at " .. path .. "; run cairn init", 0)
+		error(("no database at %s; run %s init"):format(path,
+		    M.progname()), 0)
 	end
 	mkdirs(path)
 
@@ -764,7 +798,8 @@ function C.init(p)
 
 	d:close()
 	print("database " .. path)
-	print("cairn topics seed writes a starter list of topic/ tags")
+	print(M.progname()
+	    .. " topics seed writes a starter list of topic/ tags")
 end
 
 -- noteout(v) prints the result of put or edit
@@ -958,7 +993,7 @@ function C.search(p, d)
 	local q = table.concat(p.args, " ")
 
 	if q:match("^%s*$") and #p.opts.t == 0 then
-		io.write(M.SEARCHHELP)
+		io.write(M.named(M.SEARCHHELP))
 		return
 	end
 	-- -l lists every hit's id, one a line; -q prints nothing. Both exit
@@ -1510,22 +1545,24 @@ function M.main(argv)
 	local ok, p = pcall(M.parse, argv)
 
 	if not ok then
-		io.stderr:write("cairn: ", p, "\n")
+		io.stderr:write(M.progname(), ": ", p, "\n")
 		return 2
 	end
 	if p.opts.help or p.opts.h or p.cmd == "help" then
-		io.write(M.GUIDE, "\n", M.USAGE)
+		io.write(M.named(M.GUIDE .. "\n" .. M.USAGE))
 		return 0
 	end
 	if not p.cmd then
-		io.stderr:write(M.USAGE, "\nrun cairn --help for the manual\n")
+		io.stderr:write(M.named(M.USAGE
+		    .. "\nrun cairn --help for the manual\n"))
 		return 2
 	end
 
 	local fn = C[p.cmd]
 
 	if not fn then
-		io.stderr:write("cairn: unknown command ", p.cmd, "\n", M.USAGE)
+		io.stderr:write(M.progname(), ": unknown command ", p.cmd, "\n",
+		    M.named(M.USAGE))
 		return 2
 	end
 	if p.cmd == "init" then
@@ -1537,7 +1574,7 @@ function M.main(argv)
 
 	ok, d, path = pcall(M.open, p.opts, p.cmd == "mcp")
 	if not ok then
-		io.stderr:write("cairn: ", tostring(d), "\n")
+		io.stderr:write(M.progname(), ": ", tostring(d), "\n")
 		return 1
 	end
 
@@ -1545,11 +1582,11 @@ function M.main(argv)
 
 	ok, err = pcall(fn, p, d, path)
 	if ok and p.cmd ~= "gc" and p.cmd ~= "mcp" and store.autogc(d) then
-		io.stderr:write("cairn: ran gc (gc.auto)\n")
+		io.stderr:write(M.progname(), ": ran gc (gc.auto)\n")
 	end
 	d:close()
 	if not ok then
-		io.stderr:write("cairn: ", tostring(conflict(err)), "\n")
+		io.stderr:write(M.progname(), ": ", tostring(conflict(err)), "\n")
 		return 1
 	end
 	-- a command may return its own exit status, as search does

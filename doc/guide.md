@@ -300,6 +300,27 @@ The database is one SQLite file: `$CAIRN_DB`, or
 `$XDG_DATA_HOME/cairn/cairn.db`. `cairn -d FILE` uses another one.
 `cairn init` makes an empty one.
 
+A second store, such as personal notes, needs its own database and its
+own name. Write a small Lua script with that name, set `CAIRN_DB` in
+it, and run the cairn command line:
+
+    #!/usr/bin/env lua5.4
+    -- mydb: cairn with a personal database
+    local stdlib = require "posix.stdlib"
+
+    if not os.getenv("CAIRN_DB") then
+    	local data = os.getenv("XDG_DATA_HOME")
+    	    or os.getenv("HOME") .. "/.local/share"
+
+    	stdlib.setenv("CAIRN_DB", data .. "/cairn/mydb.db")
+    end
+    os.exit(require("cairn.cli").main(arg))
+
+cairn takes its name from `arg[0]`, so the manual, the errors, and the
+MCP server all say `mydb`. An agent that reads them then writes to
+the correct database. A shell wrapper that runs `cairn` loses the
+name.
+
 A backup is a copy of that file, made while nothing writes, or with
 SQLite's own backup:
 

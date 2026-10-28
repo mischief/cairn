@@ -526,8 +526,8 @@ end
 
 function M.serve(d, path)
 	local client
-	local srv = mcptk.server{ name = "cairn", version = "0.1",
-	    instructions = M.INSTRUCTIONS }
+	local srv = mcptk.server{ name = cli.progname(), version = "0.1",
+	    instructions = cli.named(M.INSTRUCTIONS) }
 	local dispatch = srv.dispatch
 
 	function srv.dispatch(self, req)
@@ -550,8 +550,8 @@ function M.serve(d, path)
 			M.register(srv, t, M.WRITES[t.name] and d)
 		end
 	end
-	srv.instructions = write and M.INSTRUCTIONS
-	    or (M.READONLY:gsub("CMD", cli.command()))
+	srv.instructions = cli.named(write and M.INSTRUCTIONS
+	    or (M.READONLY:gsub("CMD", cli.command())))
 	srv:run()
 end
 
