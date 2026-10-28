@@ -313,3 +313,45 @@ describe("similar in view", function()
 		d:close()
 	end)
 end)
+
+describe("relaxed search", function()
+	local d
+
+	before_each(function()
+		d = assert(db.open(":memory:"))
+		store.note(d, { title = "yocto", author = "kbd",
+		    body = "# releases\n\nYocto LTS releases get four years of fixes." })
+		store.note(d, { title = "rsa", author = "kbd",
+		    body = "# keys\n\nThe public key holds the modulus." })
+	end)
+
+	after_each(function()
+		d:close()
+	end)
+
+	it("keeps the strict result when a document holds every word", function()
+		local h = search.search(d, "yocto lts")
+
+		assert.equal(1, #h)
+		assert.is_nil(h[1].match)
+	end)
+
+	it("drops question words, then takes any word", function()
+		local h = search.search(d, "how long is yocto lts supported")
+
+		assert.equal(1, #h)
+		assert.equal("yocto", h[1].title)
+		assert.equal("some", h[1].match)
+	end)
+
+	it("runs FTS5 syntax as written", function()
+		assert.equal(0, #search.search(d, '"yocto supported"'))
+	end)
+
+	it("builds the relaxed queries", function()
+		assert.same({ '"yocto" "lts"*', '"yocto" OR "lts"*' },
+		    search.relax("what is yocto lts"))
+		assert.same({ '"public" OR "modulus"*' },
+		    search.relax("public modulus"))
+	end)
+end)

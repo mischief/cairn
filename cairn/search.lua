@@ -93,6 +93,42 @@ function M.fts(s, plain)
 	return table.concat(words, " ")
 end
 
+-- words a question adds that a document rarely holds
+M.STOP = {}
+for w in ([[a an and are can do does for from how i in is it of on or
+    the to vs what when where which who why with]]):gmatch("%S+") do
+	M.STOP[w] = true
+end
+
+-- relax(text) -> FTS5 queries to try, in order, after the strict query
+-- finds nothing: the words without question words, then any of them
+function M.relax(text)
+	local words, kept, out = {}, {}, {}
+
+	for w in text:gmatch("[^%s%p]+") do
+		words[#words + 1] = w
+		if not M.STOP[w:lower()] then
+			kept[#kept + 1] = w
+		end
+	end
+	if #kept > 0 and #kept < #words then
+		out[#out + 1] = M.fts(table.concat(kept, " "), true)
+	end
+
+	local any = #kept > 0 and kept or words
+
+	if #any > 1 then
+		local q = {}
+
+		for i, w in ipairs(any) do
+			q[i] = '"' .. w .. '"'
+		end
+		q[#q] = q[#q] .. "*"
+		out[#out + 1] = table.concat(q, " OR ")
+	end
+	return out
+end
+
 -- where clause and args for the filters, over doc d
 local function filters(d, f, opts)
 	-- hidden documents show only when asked for, and then only they do
@@ -262,31 +298,9 @@ function M.search(d, q, opts)
 		match = M.fts(text, true)
 	end
 
-	if match then
-		for _, r in ipairs(d:rows("SELECT d.*, bm25(doc_fts, 10.0, 5.0, 3.0) AS s "
-		    .. "FROM doc_fts JOIN doc d ON d.n = doc_fts.rowid "
-		    .. "WHERE doc_fts MATCH ? AND " .. where .. " LIMIT 500",
-		    append({ match }, wargs))) do
-			local h = hit(r)
-
-			h.score = h.score + r.s
-		end
-
-		local chunks = d:rows("SELECT d.*, c.page, c.heading, "
-		    .. "snippet(chunk_fts, 1, '[', ']', '...', 24) AS snip, "
-		    .. "bm25(chunk_fts, 2.0, 1.0) AS s "
-		    .. "FROM chunk_fts JOIN chunk c ON c.id = chunk_fts.rowid "
-		    .. "JOIN extract e ON e.id = c.extract "
-		    .. "JOIN doc d ON d.content = e.file "
-		    .. "WHERE chunk_fts MATCH ? AND " .. where
-		    .. " ORDER BY s LIMIT 500", append({ match }, wargs))
-
-		if #chunks == 0 and #order == 0 and not M.hasops(text)
-		    and #text >= 3 then
-			chunks = M.scan(d, text, where, wargs)
-		end
-		-- chunks come best first; each document keeps its best few, so a
-		-- table of contents and the section it points to both show
+	-- chunks come best first; each document keeps its best few, so a
+	-- table of contents and the section it points to both show
+	local function addchunks(chunks)
 		for _, r in ipairs(chunks) do
 			local h = hit(r)
 
@@ -309,6 +323,45 @@ function M.search(d, q, opts)
 			if h.seen == 2 or h.seen == 3 then
 				h.depth = (h.depth or 0) + r.s / (2 ^ h.seen)
 			end
+		end
+	end
+
+	local function run(m)
+		for _, r in ipairs(d:rows("SELECT d.*, bm25(doc_fts, 10.0, 5.0, 3.0) AS s "
+		    .. "FROM doc_fts JOIN doc d ON d.n = doc_fts.rowid "
+		    .. "WHERE doc_fts MATCH ? AND " .. where .. " LIMIT 500",
+		    append({ m }, wargs))) do
+			local h = hit(r)
+
+			h.score = h.score + r.s
+		end
+		addchunks(d:rows("SELECT d.*, c.page, c.heading, "
+		    .. "snippet(chunk_fts, 1, '[', ']', '...', 24) AS snip, "
+		    .. "bm25(chunk_fts, 2.0, 1.0) AS s "
+		    .. "FROM chunk_fts JOIN chunk c ON c.id = chunk_fts.rowid "
+		    .. "JOIN extract e ON e.id = c.extract "
+		    .. "JOIN doc d ON d.content = e.file "
+		    .. "WHERE chunk_fts MATCH ? AND " .. where
+		    .. " ORDER BY s LIMIT 500", append({ m }, wargs)))
+	end
+
+	local relaxed
+
+	if match then
+		run(match)
+		-- no document holds every word: try fewer words, then any of
+		-- them. Queries in FTS5 syntax run as written.
+		if #order == 0 and not M.hasops(text) then
+			for _, m in ipairs(M.relax(text)) do
+				run(m)
+				if #order > 0 then
+					relaxed = true
+					break
+				end
+			end
+		end
+		if #order == 0 and not M.hasops(text) and #text >= 3 then
+			addchunks(M.scan(d, text, where, wargs))
 		end
 		for _, h in ipairs(order) do
 			h.score = h.score + (h.best or 0) + (h.depth or 0)
@@ -337,6 +390,8 @@ function M.search(d, q, opts)
 		h.pending = h.content and store.pending(d, h.content) or nil
 		h.uri = store.uri(h.id, nil, h.page and ("p=" .. h.page) or nil)
 		h.content, h.best, h.seen, h.depth = nil, nil, nil, nil
+		-- "some" when no document held every word of the query
+		h.match = relaxed and "some" or nil
 		-- classifiers write as cairn:NAME; show who wrote the document
 		h.author = d:row("SELECT author FROM doc_version WHERE doc = ? "
 		    .. "AND author NOT LIKE 'cairn:%' ORDER BY rev DESC LIMIT 1",

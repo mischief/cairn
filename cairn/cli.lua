@@ -630,6 +630,10 @@ R.doc = showdoc
 function R.hits(v)
 	local s = {}
 
+	if v.hits[1] and v.hits[1].match == "some" then
+		s[#s + 1] = "no document holds all the words; these hold some "
+		    .. "of them\n\n"
+	end
 	for i, h in ipairs(v.hits) do
 		-- a blank line between hits keeps them apart
 		if i > 1 then
