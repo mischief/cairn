@@ -601,8 +601,7 @@ M.list.expand = {
 							content = M.EXPAND .. "\n\nDocument: " .. row.title
 							    .. (ch.heading and ("\nSection: " .. ch.heading)
 							    or "") .. "\n\nPassage:\n"
-							    .. require("cairn.chunk").utf8(ch.body:sub(1,
-							    6000)),
+							    .. require("cairn.chunk").utf8(ch.body),
 						} },
 					})
 					local ok, r = pcall(client.json.decode, text)
