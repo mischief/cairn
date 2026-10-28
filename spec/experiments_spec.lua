@@ -44,6 +44,9 @@ function fake:call(_, path, body)
 
 	if not rf then
 		text = "First sentence here. Second one."
+	elseif rf.json_schema.name == "expand" then
+		text = cjson.encode({ terms = { "public key", "rsa modulus", "cipher" },
+		    questions = { "How does rsa work?" } })
 	elseif rf.json_schema.name == "form" then
 		text = cjson.encode({ form = "paper" })
 	else
@@ -289,5 +292,39 @@ describe("clean", function()
 			"unquote",
 			"questions",
 		}, 200))
+	end)
+end)
+
+describe("expand", function()
+	it("skips chunks too short to hold terms", function()
+		local saved = { client = lgml.client, available = lgml.available,
+		    print = _G.print }
+
+		lgml.client = function()
+			return fake
+		end
+		lgml.available = function()
+			return { array = function(t)
+				return t
+			end, json = { decode = cjson.decode } }
+		end
+		_G.print = function() end
+
+		local d = assert(db.open(":memory:"))
+		local id = store.note(d, { title = "rsa", author = "k",
+		    body = "# short\n\nx\n\n# long\n\n" .. ("ciphers and keys "):rep(20) })
+
+		calls = {}
+		x.main({ args = { "expand", id }, opts = { apply = true } }, d,
+		    ":memory:")
+		lgml.client, lgml.available = saved.client, saved.available
+		_G.print = saved.print
+
+		local n = d:row("SELECT count(*) FROM chunk c JOIN extract e "
+		    .. "ON e.id = c.extract WHERE e.kind = 'expand'")
+
+		d:close()
+		assert.equal(1, #calls)
+		assert.equal(1, n)
 	end)
 end)

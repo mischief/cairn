@@ -490,6 +490,10 @@ M.SCHEMA = {
 	required = { "terms", "questions" },
 }
 
+-- chunks shorter than this hold a heading or a page number, not text
+-- a model can find terms in; expand skips them
+M.MINCHUNK = 200
+
 -- notes and field names a model leaks into a list
 local LEAKS = { "_note", "unquote", "^terms$", "^questions$" }
 
@@ -578,6 +582,10 @@ M.list.expand = {
 
 				print(("== %s  %s"):format(id, row.title))
 				for i, ch in ipairs(filechunks(d, row.content, "expand")) do
+					if #ch.body < M.MINCHUNK then
+						goto next
+					end
+
 					-- greedy decoding loops on open lists; some randomness
 					-- with a presence penalty keeps the terms varied
 					local text = lgml.chat(c, {
@@ -614,6 +622,7 @@ M.list.expand = {
 							    body:gsub("\n", "\n    ")))
 						end
 					end
+					::next::
 				end
 				if p.opts.apply then
 					store.index(d, row.content, "expand", "lgml:" .. model, 1,
