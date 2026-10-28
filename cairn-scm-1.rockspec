@@ -66,6 +66,12 @@ build = {
   },
 }
 
+-- bin/cairn.lua adds its own module paths; the luarocks wrapper would
+-- put them all on the command line
+deploy = {
+  wrap_bin_scripts = false,
+}
+
 test_dependencies = {
   'busted >= 2.0',
 }
