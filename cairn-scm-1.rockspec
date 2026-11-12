@@ -33,6 +33,7 @@ dependencies = {
 build = {
   type = 'builtin',
   modules = {
+    ['cairn.proctitle'] = 'src/proctitle.c',
     ['cairn.chunk'] = 'cairn/chunk.lua',
     ['cairn.cid'] = 'cairn/cid.lua',
     ['cairn.cli'] = 'cairn/cli.lua',

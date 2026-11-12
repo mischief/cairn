@@ -15,6 +15,19 @@ if tree then
 	package.cpath = ("%s/lib/lua/%s/?.so;"):format(tree, v) .. package.cpath
 end
 
+-- Show "cairn mcp" in ps instead of the interpreter and its arguments.
+-- Optional: without the compiled module the title stays as it is.
+do
+	local ok, pt = pcall(require, "cairn.proctitle")
+
+	if ok then
+		local t = { "cairn" }
+
+		for i = 1, #arg do t[#t + 1] = arg[i] end
+		pt.set(table.concat(t, " "), "cairn")
+	end
+end
+
 local cli = require "cairn.cli"
 
 os.exit(cli.main(arg))
