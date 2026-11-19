@@ -840,14 +840,12 @@ function M.filemeta(data, mime)
 		return {}
 	end
 
-	local path = util.tmpfile(".pdf")
+	local tmp = require "cairn.tmp"
+	local ok, out, code = pcall(tmp.with, function(dir)
+		return require("cairn.proc").run(
+		    { "pdfinfo", "-isodates", tmp.input(dir, data) })
+	end)
 
-	util.writefile(path, data)
-
-	local ok, out, code = pcall(require("cairn.proc").run,
-	    { "pdfinfo", "-isodates", path })
-
-	os.remove(path)
 	if not ok or code ~= 0 then
 		return {}
 	end

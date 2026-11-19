@@ -58,6 +58,7 @@ build = {
     ['cairn.secret'] = 'cairn/secret.lua',
     ['cairn.store'] = 'cairn/store.lua',
     ['cairn.tags'] = 'cairn/tags.lua',
+    ['cairn.tmp'] = 'cairn/tmp.lua',
     ['cairn.util'] = 'cairn/util.lua',
   },
   install = {

@@ -5,6 +5,7 @@
 local chunk = require "cairn.chunk"
 local proc = require "cairn.proc"
 local util = require "cairn.util"
+local tmp = require "cairn.tmp"
 
 local M = {}
 
@@ -48,6 +49,8 @@ M.PROMPT = "Describe this image for a search index. Name the objects, "
     .. "Plain text, no preamble."
 
 local function run(argv, opts)
+	tmp.rewind()
+
 	local out, code, err = proc.run(argv, opts)
 
 	if code == 127 then
@@ -60,19 +63,12 @@ local function run(argv, opts)
 	return out
 end
 
--- with(data, mime, fn) writes data to a temp file and calls fn(path)
-local function with(data, mime, fn)
-	local path = util.tmpfile(util.extof(mime))
-
-	assert(util.writefile(path, data))
-
-	local res = table.pack(pcall(fn, path))
-
-	os.remove(path)
-	if not res[1] then
-		error(res[2], 0)
-	end
-	return table.unpack(res, 2, res.n)
+-- with(data, fn) calls fn(path, dir): path reads data, and dir is a
+-- private directory for other files. Both are gone when it returns.
+local function with(data, fn)
+	return tmp.with(function(dir)
+		return fn(tmp.input(dir, data), dir)
+	end)
 end
 
 local function b64(s)
@@ -136,7 +132,7 @@ end
 -- columns of a two-column page together, so those pages come from
 -- reading order instead.
 function M.pdf(data, opts)
-	return with(data, "application/pdf", function(path)
+	return with(data, function(path)
 		local text = run({ "pdftotext", "-layout", "-enc", "UTF-8", path,
 		    "-" }, opts)
 		local pages, twos = {}, false
@@ -180,34 +176,26 @@ end
 
 -- ocr(data, mime, opts) -> chunks, from tesseract over each page
 function M.ocr(data, mime, opts)
-	return with(data, mime, function(path)
+	return with(data, function(path, dir)
 		if mime ~= "application/pdf" then
 			return chunk.plain(run({ "tesseract", path, "-" }, opts))
 		end
 
-		local prefix = util.tmpfile()
+		run({ "pdftoppm", "-r", "200", "-png", path, dir .. "/page" }, opts)
 
-		run({ "pdftoppm", "-r", "200", "-png", path, prefix }, opts)
-
-		local dir, base = prefix:match("^(.*)/([^/]+)$")
 		local pages, text = {}, {}
 
 		for f in require("posix.dirent").files(dir) do
-			if f:sub(1, #base + 1) == base .. "-" and f:match("%.png$") then
+			if f:match("^page%-.*%.png$") then
 				pages[#pages + 1] = dir .. "/" .. f
 			end
 		end
 		table.sort(pages)
+		-- remove each page when done, so a long scan does not fill the disk
 		for _, f in ipairs(pages) do
-			local ok, t = pcall(run, { "tesseract", f, "-" }, opts)
-
+			text[#text + 1] = run({ "tesseract", f, "-" }, opts)
 			os.remove(f)
-			if not ok then
-				error(t, 0)
-			end
-			text[#text + 1] = t
 		end
-		os.remove(prefix)
 		return chunk.pages(table.concat(text, "\f"))
 	end)
 end
@@ -247,20 +235,15 @@ end
 
 -- transcript(data, mime, opts) -> chunks with an audio transcript
 function M.transcript(data, mime, opts)
-	return with(data, mime, function(path)
-		local wav = util.tmpfile(".wav")
-		local ok, res = pcall(function()
-			run({ "ffmpeg", "-y", "-loglevel", "error", "-i", path,
-			    "-ac", "1", "-ar", "16000", wav }, opts)
-			return run({ "curl", "-sS", "--fail-with-body", "-m", "3600",
-			    "-F", "file=@" .. wav, "-F", "response_format=json",
-			    assert(opts.url, "no lgml url") .. "/v1/audio/transcriptions" }, opts)
-		end)
+	return with(data, function(path, dir)
+		local wav = dir .. "/audio.wav"
 
-		os.remove(wav)
-		if not ok then
-			error(res, 0)
-		end
+		run({ "ffmpeg", "-y", "-loglevel", "error", "-i", path,
+		    "-ac", "1", "-ar", "16000", wav }, opts)
+
+		local res = run({ "curl", "-sS", "--fail-with-body", "-m", "3600",
+		    "-F", "file=@" .. wav, "-F", "response_format=json",
+		    assert(opts.url, "no lgml url") .. "/v1/audio/transcriptions" }, opts)
 
 		local json = require "mcptk.json"
 		local text = json.decode(res).text
@@ -302,19 +285,14 @@ function M.pandoc(data, mime, opts)
 		error("pandoc does not read " .. tostring(mime), 0)
 	end
 
-	local filter = util.tmpfile(".lua")
+	local text = with(data, function(path, dir)
+		local filter = dir .. "/filter.lua"
 
-	assert(util.writefile(filter, M.FILTER))
-
-	local ok, text = pcall(with, data, mime, function(path)
+		assert(util.writefile(filter, M.FILTER))
 		return run({ "pandoc", "-f", from, "-t", "gfm-raw_html",
 		    "--wrap=none", "-L", filter, path }, opts)
 	end)
 
-	os.remove(filter)
-	if not ok then
-		error(text, 0)
-	end
 	return chunk.markdown((text:gsub("\\(%p)", "%1")))
 end
 

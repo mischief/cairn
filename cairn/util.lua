@@ -80,20 +80,6 @@ function M.writefile(path, s)
 	return true
 end
 
--- tmpfile(ext) -> a new empty file path ending in ext
-function M.tmpfile(ext)
-	local base = os.tmpname()
-
-	if not ext or ext == "" then
-		return base
-	end
-
-	local path = base .. ext
-
-	os.rename(base, path)
-	return path
-end
-
 local EXT = {
 	md = "text/markdown", markdown = "text/markdown",
 	txt = "text/plain", text = "text/plain",
