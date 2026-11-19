@@ -97,17 +97,6 @@ local EXT = {
 
 M.EXT = EXT
 
--- extension of a mime type, for temp files that tools read by name
-function M.extof(mime)
-	for ext, m in pairs(EXT) do
-		if m == mime and #ext <= 4 and ext ~= "htm" and ext ~= "jpg"
-		    and ext ~= "text" then
-			return "." .. ext
-		end
-	end
-	return ""
-end
-
 -- mimeof(name[, path]) -> mime type from the extension, then file(1)
 function M.mimeof(name, path)
 	local ext = name and name:match("%.([%w]+)$")
