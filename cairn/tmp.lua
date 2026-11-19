@@ -72,12 +72,13 @@ function M.with(fn)
 	for _, fd in ipairs(scope.fds) do
 		unistd.close(fd)
 	end
+	-- remove first: a signal in between still finds the directory live
+	pcall(remove, dir)
 	for i = #live, 1, -1 do
 		if live[i] == scope then
 			table.remove(live, i)
 		end
 	end
-	pcall(remove, dir)
 	if not res[1] then
 		error(res[2], 0)
 	end
