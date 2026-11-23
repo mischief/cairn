@@ -177,6 +177,9 @@ usage: cairn [-d db] [--json] command [args]
   experiments                       features that use a language model;
                                     run it alone to list them
   mcp                               serve MCP tools over stdio
+  web [--listen host:port] [--no-open] [id]
+                                    serve a read-only browser on
+                                    127.0.0.1:8377, and open it
 
 rels: see-also cites supersedes contradicts
 settings live in the database (cairn config); env overrides them:
@@ -192,7 +195,7 @@ local FLAGS = { json = true, all = true, remove = true,
     ["from-file"] = true, ["dry-run"] = true, docs = true, meta = true,
     apply = true, force = true, hidden = true, ["about-pages"] = true,
     l = true, ids = true, q = true, quiet = true, stale = true, adopt = true,
-    unset = true, summary = true,
+    unset = true, summary = true, ["no-open"] = true,
     ["retry-failed"] = true, help = true, h = true }
 
 function M.parse(argv)
@@ -1236,14 +1239,18 @@ function C.meta(p, d)
 end
 
 
-function C.wanted(p, d)
-	local rows = d:rows("SELECT w.title, group_concat(w.src, ' ') AS srcs "
+-- wanted(d) -> list of { title, srcs }: titles that notes link to and
+-- no document has; srcs holds the ids of those notes, space separated
+function M.wanted(d)
+	return d:rows("SELECT w.title, group_concat(w.src, ' ') AS srcs "
 	    .. "FROM wanted w JOIN doc s ON s.id = w.src AND s.hidden = 0 "
 	    .. "WHERE NOT EXISTS (SELECT 1 FROM doc d "
 	    .. "WHERE lower(d.title) = lower(w.title) AND d.hidden = 0) "
 	    .. "GROUP BY lower(w.title) ORDER BY count(*) DESC, w.title")
+end
 
-	out(p.opts, rows, R.wanted)
+function C.wanted(p, d)
+	out(p.opts, M.wanted(d), R.wanted)
 end
 
 
@@ -1540,6 +1547,29 @@ function C.mcp(p, d, path)
 	require("cairn.mcp").serve(d, path)
 end
 
+-- web: serve the read-only browser, and show it, or one document, in
+-- the desktop's browser
+function C.web(p, d)
+	local web = require "cairn.web"
+	local at = "/"
+
+	if p.args[1] then
+		local id, rev, frag = M.target(d, p.args[1])
+
+		at = web.docurl(id, rev, frag)
+	end
+	web.serve(d, { listen = p.opts.listen, ready = function(base)
+		local url = base .. at
+
+		print(url)
+		io.stdout:flush()
+		if not p.opts["no-open"] then
+			os.execute("xdg-open '" .. url:gsub("'", "'\\''")
+			    .. "' >/dev/null 2>&1 &")
+		end
+	end })
+end
+
 -- main(argv) -> exit code
 function M.main(argv)
 	local ok, p = pcall(M.parse, argv)
@@ -1581,7 +1611,8 @@ function M.main(argv)
 	local err
 
 	ok, err = pcall(fn, p, d, path)
-	if ok and p.cmd ~= "gc" and p.cmd ~= "mcp" and store.autogc(d) then
+	if ok and p.cmd ~= "gc" and p.cmd ~= "mcp" and p.cmd ~= "web"
+	    and store.autogc(d) then
 		io.stderr:write(M.progname(), ": ran gc (gc.auto)\n")
 	end
 	d:close()

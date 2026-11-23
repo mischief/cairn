@@ -28,6 +28,7 @@ dependencies = {
   'lsqlite3',
   'luaposix',
   'mcptk >= 0.1',
+  'mhttp',
 }
 
 build = {
@@ -47,7 +48,9 @@ build = {
     ['cairn.lgml'] = 'cairn/lgml.lua',
     ['cairn.topics'] = 'cairn/topics.lua',
     ['cairn.vocab'] = 'cairn/vocab.lua',
+    ['cairn.web'] = 'cairn/web.lua',
     ['cairn.mcp'] = 'cairn/mcp.lua',
+    ['cairn.md'] = 'cairn/md.lua',
     ['cairn.meta'] = 'cairn/meta.lua',
     ['cairn.proc'] = 'cairn/proc.lua',
     ['cairn.queue'] = 'cairn/queue.lua',

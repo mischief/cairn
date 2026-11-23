@@ -37,6 +37,7 @@ fast subset of the same operations.
   /dev/urandom, so it installs where luaossl does not build, such as
   OpenBSD with LibreSSL.
 - mcptk for the MCP stdio server.
+- mhttp for the `cairn web` HTTP server.
 - External extractors run as commands: pdftotext, pdftoppm, tesseract,
   pandoc, ffmpeg.
 - lgml over local HTTP for image descriptions and audio transcripts.
@@ -744,6 +745,29 @@ document and mark the text as stored content, not instructions.
 
 The database path comes from `-d`, then `CAIRN_DB`, then
 `$XDG_DATA_HOME/cairn/cairn.db`.
+
+## Web browser
+
+`cairn web` serves a read-only browser over HTTP with mhttp, on
+127.0.0.1:8377 unless `--listen` names another address. It prints its
+URL and opens it with `xdg-open`; `--no-open` leaves that out. An id,
+CID, title or `cairn:` URI as argument opens that document.
+
+- `/` lists the documents changed last. `/search?q=` takes the query syntax of
+  `cairn search`. `/tags/PREFIX` and `/wanted` match the commands.
+- `/d/ID[@REV]` is the viewer. A note shows as rendered markdown, with
+  a source view. A PDF shows in a frame, an image in place, and each
+  has a view of its extracted text. `?at=p=N` opens a PDF at a page;
+  other fragments select sections of the text.
+- `/raw/ID[@REV]` sends the stored bytes. PDFs, images, audio and
+  video keep their type. Text of any type, HTML too, goes out as
+  `text/plain`. Every other type is a download.
+
+The pages have no scripts, and a Content-Security-Policy forbids them.
+`cairn.md` renders markdown and escapes raw HTML. The server answers
+only GET and HEAD. On a loopback address it refuses a Host header that
+is not a loopback name, so a page of another site cannot read the
+store through a DNS name it controls.
 
 ## MCP tools
 

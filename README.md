@@ -52,6 +52,14 @@ recent, wanted, status. `cairn config mcp.write 1` adds the write
 tools: put, edit, tag, meta, link, attach. It never runs an extractor;
 after an attach it starts a detached `cairn enrich`.
 
+## Web
+
+    cairn web [--listen host:port] [--no-open] [id]
+
+A read-only browser on 127.0.0.1:8377: search, recent documents, tags,
+wanted titles, and a viewer for notes, text, PDFs and images. With an
+id it opens that document.
+
 Documents carry metadata as `namespace.name` keys, mostly DCMI Terms:
 `cairn meta ID dcterms.date=1985-12-26 dcterms.creator='DoD NCSC'`.
 Search filters on it: `date:<1990`, `creator:intel`,
